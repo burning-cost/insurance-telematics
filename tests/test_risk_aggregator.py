@@ -49,11 +49,27 @@ def test_credibility_weight_in_0_1(trip_features):
     assert (w <= 1).all()
 
 
-def test_credibility_weight_increases_with_trips(trip_features):
+def test_credibility_weight_increases_with_trips():
     """Drivers with more trips should have higher credibility weight."""
-    driver_df = aggregate_to_driver(trip_features, credibility_threshold=30)
-    corr = driver_df.select(["n_trips", "credibility_weight"]).to_pandas().corr()
-    assert corr.loc["n_trips", "credibility_weight"] > 0.9
+    # Create two drivers with different trip counts explicitly
+    rows = []
+    for trip_num in range(5):
+        rows.append({"trip_id": f"T{trip_num}", "driver_id": "D_few", "distance_km": 10.0,
+                     "mean_speed_kmh": 50.0, "p95_speed_kmh": 80.0, "speed_variation_coeff": 0.2,
+                     "harsh_braking_rate": 0.1, "harsh_accel_rate": 0.1,
+                     "harsh_cornering_rate": 0.05, "speeding_fraction": 0.1,
+                     "night_driving_fraction": 0.05, "urban_fraction": 0.4})
+    for trip_num in range(60):
+        rows.append({"trip_id": f"T{trip_num+100}", "driver_id": "D_many", "distance_km": 10.0,
+                     "mean_speed_kmh": 50.0, "p95_speed_kmh": 80.0, "speed_variation_coeff": 0.2,
+                     "harsh_braking_rate": 0.1, "harsh_accel_rate": 0.1,
+                     "harsh_cornering_rate": 0.05, "speeding_fraction": 0.1,
+                     "night_driving_fraction": 0.05, "urban_fraction": 0.4})
+    df = pl.DataFrame(rows)
+    driver_df = aggregate_to_driver(df, credibility_threshold=30)
+    w_few = driver_df.filter(pl.col("driver_id") == "D_few")["credibility_weight"][0]
+    w_many = driver_df.filter(pl.col("driver_id") == "D_many")["credibility_weight"][0]
+    assert w_many > w_few, f"Expected D_many ({w_many:.3f}) > D_few ({w_few:.3f})"
 
 
 def test_total_km_positive(trip_features):

@@ -120,7 +120,7 @@ def load_trips(
     if df["timestamp"].dtype == pl.Utf8 or df["timestamp"].dtype == pl.String:
         df = df.with_columns(
             pl.col("timestamp").str.to_datetime(
-                format=None, strict=False, use_earliest=True
+                format=None, strict=False
             )
         )
 

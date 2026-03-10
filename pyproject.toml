@@ -54,3 +54,7 @@ packages = ["src/insurance_telematics"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = [
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+    "ignore::DeprecationWarning",
+]

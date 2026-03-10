@@ -26,6 +26,7 @@ from __future__ import annotations
 from typing import Optional
 
 import numpy as np
+import pandas as pd
 import polars as pl
 
 try:
@@ -87,13 +88,13 @@ class TelematicsScoringPipeline:
         n_hmm_states: int = 3,
         credibility_threshold: int = 30,
         hmm_features: list[str] | None = None,
-        glm_features: list[str] | None = None,
+        glm_feature_subset: list[str] | None = None,
         random_state: int = 42,
     ) -> None:
         self.n_hmm_states = n_hmm_states
         self.credibility_threshold = credibility_threshold
         self.hmm_features = hmm_features
-        self.glm_features = glm_features
+        self.glm_feature_subset = glm_feature_subset
         self.random_state = random_state
 
         self._hmm: Optional[DrivingStateHMM] = None
@@ -155,13 +156,27 @@ class TelematicsScoringPipeline:
 
         # Stage 5: Poisson GLM
         glm_feature_cols = self._select_glm_features(model_df)
-        self._glm_feature_names = glm_feature_cols
 
         X = model_df.select(glm_feature_cols).to_pandas()
+
+        # Drop zero-variance and constant columns before GLM to prevent NaN deviance
+        X = X.fillna(X.mean())
+        zero_var = [c for c in X.columns if X[c].std() < 1e-10]
+        if zero_var:
+            X = X.drop(columns=zero_var)
+        if X.shape[1] == 0:
+            # No useful features: intercept-only model
+            X = pd.DataFrame(index=X.index)
+
         X = sm.add_constant(X, has_constant="add")
 
-        y = model_df["n_claims"].to_numpy()
-        offset = np.log(model_df["exposure_years"].clip(1e-6).to_numpy())
+        # Store the final feature names (after dropping zero-variance cols)
+        self._glm_feature_names = [c for c in X.columns if c != "const"]
+
+        y = model_df["n_claims"].to_numpy().astype(float)
+        exposure = model_df["exposure_years"].to_numpy()
+        exposure = np.clip(exposure, 1e-6, None)
+        offset = np.log(exposure)
 
         poisson_model = sm.GLM(
             y,
@@ -169,7 +184,12 @@ class TelematicsScoringPipeline:
             family=sm.families.Poisson(link=sm.families.links.Log()),
             offset=offset,
         )
-        self._glm_result = poisson_model.fit(maxiter=100, disp=False)
+        # Provide zero start_params to avoid NaN deviance when exposure is small.
+        # The intercept-at-zero start is safe for Poisson with log link.
+        start = np.zeros(X.shape[1])
+        self._glm_result = poisson_model.fit(
+            start_params=start, maxiter=200, disp=False
+        )
         self.is_fitted = True
         return self
 
@@ -234,8 +254,8 @@ class TelematicsScoringPipeline:
 
     def _select_glm_features(self, df: pl.DataFrame) -> list[str]:
         """Choose GLM feature columns from available numeric columns."""
-        if self.glm_features is not None:
-            return [c for c in self.glm_features if c in df.columns]
+        if self.glm_feature_subset is not None:
+            return [c for c in self.glm_feature_subset if c in df.columns]
 
         # Default: all numeric columns except identifiers and metadata
         exclude = {

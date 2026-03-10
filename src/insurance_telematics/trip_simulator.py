@@ -143,7 +143,7 @@ class TripSimulator:
             cautious_frac, normal_frac, aggressive_frac = mixture
 
             driver_km = 0.0
-            driver_trips_start = global_trip_id
+            driver_total_seconds = 0
 
             for trip_num in range(trips_per_driver):
                 trip_id = f"TRP{global_trip_id:07d}"
@@ -153,6 +153,7 @@ class TripSimulator:
                 duration_s = int(
                     rng.integers(min_trip_duration_s, max_trip_duration_s)
                 )
+                driver_total_seconds += duration_s
 
                 # Stagger trip timestamps to spread across a year
                 days_offset = (driver_idx * trips_per_driver + trip_num) * 3.5 / 365
@@ -177,15 +178,12 @@ class TripSimulator:
                 for row in rows:
                     driver_km += row["speed_kmh"] / 3600.0  # km per second
 
-            # Synthetic claim count: Poisson with rate proportional to
-            # weighted annual claim rate and exposure
-            exposure_years = (
-                (driver_idx * trips_per_driver + trips_per_driver)
-                * max_trip_duration_s
-                / 2
-                / 365
-                / 86400
-            )
+            # Exposure: actual driving time scaled to years.
+            # Assume each driver drives at this rate year-round, prorated by
+            # average UK annual driving time (~200 hours/year).
+            # We normalise to observation period: total trip seconds / seconds_per_year.
+            # This gives a realistic exposure for a Poisson frequency model.
+            exposure_years = driver_total_seconds / 365.25 / 86400
             annual_rate = (
                 cautious_frac * _REGIMES["cautious"].base_claim_rate
                 + normal_frac * _REGIMES["normal"].base_claim_rate
