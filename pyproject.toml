@@ -31,7 +31,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Mathematics",
 ]
 dependencies = [
-    "polars>=0.20",
+    "polars>=1.0",
     "pyarrow>=12.0",
     "numpy>=1.24",
     "scipy>=1.10",
