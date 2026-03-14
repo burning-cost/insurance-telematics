@@ -143,6 +143,14 @@ The fraction of time in state 2 per driver is the key GLM covariate. Following J
 
 See `notebooks/telematics_demo.py` for a complete walkthrough on a synthetic fleet of 100 drivers — including HMM fitting, state feature extraction, and Poisson GLM training — designed to run on Databricks serverless compute.
 
+
+## Related Libraries
+
+| Library | What it does |
+|---------|-------------|
+| [insurance-survival](https://github.com/burning-cost/insurance-survival) | Customer survival and churn models — telematics-based retention modelling uses survival curves for CLV |
+| [insurance-gam](https://github.com/burning-cost/insurance-gam) | Generalised Additive Models — smooth non-linear telematics score effects without discretising into bands |
+
 ## Licence
 
 MIT
