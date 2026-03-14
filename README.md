@@ -1,5 +1,10 @@
 # insurance-telematics
 
+[![PyPI](https://img.shields.io/pypi/v/insurance-telematics)](https://pypi.org/project/insurance-telematics/)
+[![Python](https://img.shields.io/pypi/pyversions/insurance-telematics)](https://pypi.org/project/insurance-telematics/)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)]()
+[![License](https://img.shields.io/badge/license-BSD--3-blue)]()
+
 Raw telematics trip data to GLM-ready risk scores. Built for UK motor insurance pricing teams.
 
 Most telematics scoring tools are either black-box APIs (you get a number, you cannot audit it) or one-off academic scripts that do not run on your data. This library gives you the full pipeline in Python: load 1Hz GPS/accelerometer data, classify driving behaviour using a Hidden Markov Model, aggregate to driver-level risk scores, and produce a feature DataFrame you can drop into your Poisson frequency GLM alongside traditional rating factors.
