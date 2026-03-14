@@ -99,7 +99,14 @@ trips = load_trips("raw_data.csv", schema={"gps_speed": "speed_kmh"})
 ## HMM state classification
 
 ```python
+import numpy as np
+from insurance_telematics import TripSimulator, clean_trips, extract_trip_features
 from insurance_telematics import DrivingStateHMM, ContinuousTimeHMM
+
+# Generate synthetic trip data for illustration
+sim = TripSimulator(seed=42)
+trips_df, _ = sim.simulate(n_drivers=50, trips_per_driver=30)
+trip_features_df = extract_trip_features(clean_trips(trips_df))
 
 # Discrete-time (uniform 1Hz intervals) — wraps hmmlearn.GaussianHMM
 hmm = DrivingStateHMM(n_states=3)
@@ -107,8 +114,10 @@ hmm.fit(trip_features_df)
 states = hmm.predict_states(trip_features_df)
 
 # Continuous-time — handles variable trip lengths via expm(Q * dt)
+# time_deltas: array of inter-observation intervals in minutes (one per trip row)
+time_deltas = np.ones(len(trip_features_df))  # unit intervals as placeholder
 cthmm = ContinuousTimeHMM(n_states=3)
-cthmm.fit(trip_features_df, time_deltas=time_intervals_minutes)
+cthmm.fit(trip_features_df, time_deltas=time_deltas)
 ```
 
 With three states the HMM typically produces:
