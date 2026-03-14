@@ -139,9 +139,9 @@ The fraction of time in state 2 per driver is the key GLM covariate. Following J
 - Henckaerts, R. & Antonio, K. (2022). "The Added Value of Dynamically Updating Motor Insurance Prices with Telematics Data." *Insurance: Mathematics and Economics* 103, pp.79-95.
 - Guillen, M., Pérez-Marín, A.M. & Nielsen, J.P. (2024). "Pricing Weekly Motor Insurance Drivers with Behavioural and Contextual Telematics Data." *Heliyon* 10(17).
 
-## Databricks notebook demo
+## Databricks Notebook
 
-See `notebooks/telematics_demo.py` for a complete walkthrough on a synthetic fleet of 100 drivers — including HMM fitting, state feature extraction, and Poisson GLM training — designed to run on Databricks serverless compute.
+A ready-to-run Databricks notebook benchmarking this library against standard approaches is available in [burning-cost-examples](https://github.com/burning-cost/burning-cost-examples/blob/main/notebooks/telematics_scoring_pipeline.py).
 
 
 ## Related Libraries
