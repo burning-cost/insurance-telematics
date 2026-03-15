@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "insurance-telematics"
-version = "0.1.0"
+version = "0.1.1"
 description = "HMM-based driving state classification and GLM-compatible risk scoring from raw telematics trip data"
 readme = "README.md"
 license = { text = "MIT" }
@@ -44,6 +44,12 @@ dependencies = [
 dev = [
     "pytest>=7.0",
     "pytest-cov",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
 ]
 
 [project.urls]
