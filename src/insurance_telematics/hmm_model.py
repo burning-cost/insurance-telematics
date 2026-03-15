@@ -257,7 +257,7 @@ class DrivingStateHMM:
             transition_rate = n_transitions / max(total_km, 0.01)
 
             # State entropy (Shannon)
-            state_entropy = float(scipy_entropy(state_fractions + 1e-9))
+            state_entropy = float(scipy_entropy(state_fractions))
 
             row = {"driver_id": driver_id}
             for k in range(self.n_states):
@@ -487,7 +487,7 @@ class ContinuousTimeHMM:
                 else float(n_trips)
             )
             transition_rate = n_transitions / max(total_km, 0.01)
-            state_entropy = float(scipy_entropy(state_fractions + 1e-9))
+            state_entropy = float(scipy_entropy(state_fractions))
 
             row = {"driver_id": driver_id}
             for k in range(self.n_states):
@@ -591,14 +591,19 @@ class ContinuousTimeHMM:
                 )
 
         # Posterior state probabilities gamma
+        # Normalise each row by log P(observations) to get P(z_t | x).
         log_gamma = log_alpha + log_beta
-        log_gamma -= _logsumexp(log_gamma[0])  # normalise using t=0
-        gammas = np.exp(
-            log_gamma - log_gamma.max(axis=1, keepdims=True)
-        )
-        gammas /= gammas.sum(axis=1, keepdims=True)
+        for t in range(n_obs):
+            log_gamma[t] -= _logsumexp(log_gamma[t])
+        gammas = np.exp(log_gamma)
+        gammas = np.clip(gammas, 0.0, None)
+        gammas /= gammas.sum(axis=1, keepdims=True)  # numerical guard
 
         # Pairwise posteriors xi
+        # Normalise by P(observations) = exp(log_likelihood), not per-timestep.
+        # Per-timestep normalisation is incorrect: it makes each t contribute
+        # equally regardless of probability mass, causing EM to converge to a
+        # spurious fixed point.
         xis = np.zeros((n_obs - 1, n_states, n_states))
         for t in range(n_obs - 1):
             P = self._transition_matrix(dts[t])
@@ -609,10 +614,8 @@ class ContinuousTimeHMM:
                         + np.log(P[i, j] + 1e-300)
                         + log_emit[t + 1, j]
                         + log_beta[t + 1, j]
+                        - log_likelihood
                     )
-            xi_sum = xis[t].sum()
-            if xi_sum > 1e-300:
-                xis[t] /= xi_sum
 
         return gammas, xis, log_likelihood
 
