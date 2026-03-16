@@ -29,6 +29,8 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Mathematics",
+
+    "Topic :: Office/Business :: Financial",
 ]
 dependencies = [
     "polars>=1.0",
