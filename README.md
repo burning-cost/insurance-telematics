@@ -69,6 +69,9 @@ driver_hmm_features = model.driver_state_features(features, states)
 
 # Aggregate to driver level with credibility weighting
 driver_risk = aggregate_to_driver(features, credibility_threshold=30)
+
+# Join HMM state features — these are the primary actuarial risk covariates
+driver_risk = driver_risk.join(driver_hmm_features, on="driver_id", how="left")
 ```
 
 ## Input data format
@@ -99,7 +102,7 @@ trips = load_trips("raw_data.csv", schema={"gps_speed": "speed_kmh"})
 - `harsh_cornering_rate` — events/km (estimated from heading-change rate)
 - `speeding_fraction` — fraction of time exceeding road-type speed limit
 - `night_driving_fraction` — fraction of distance driven 23:00-05:00
-- `urban_fraction` — fraction of distance at speeds < 50 km/h
+- `urban_fraction` — fraction of observations (by time) classified as urban driving (speed < 50 km/h). Note: time-fraction, not distance-fraction.
 - `mean_speed_kmh`, `p95_speed_kmh`, `speed_variation_coeff`
 
 ## HMM state classification

@@ -17,7 +17,7 @@ Harsh cornering threshold : lateral acceleration > 3.0 m/s²  — approximated h
                             accelerometer data is not always available
 
 Speed thresholds by road type:
-    urban    < 50 km/h → speeding if speed > 35 km/h  (30 mph limit proxy)
+    urban    < 50 km/h → speeding if speed > 35 km/h  (~22 mph conservative threshold)
     rural    50-100    → speeding if speed > 96 km/h   (60 mph limit proxy)
     motorway > 100     → speeding if speed > 113 km/h  (70 mph limit proxy)
 
