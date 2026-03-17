@@ -49,9 +49,9 @@ print("=" * 60)
 # ---------------------------------------------------------------------------
 t0 = time.time()
 sim = TripSimulator(seed=42)
-trips_df, claims_df = sim.simulate(n_drivers=300, trips_per_driver=40)
+trips_df, claims_df = sim.simulate(n_drivers=200, trips_per_driver=30)
 sim_time = time.time() - t0
-print(f"\nSimulated 300 drivers x 40 trips in {sim_time:.2f}s")
+print(f"\nSimulated 200 drivers x 30 trips in {sim_time:.2f}s")
 print(f"  Total trips: {len(trips_df['trip_id'].unique())}")
 print(f"  Claims data: {len(claims_df)} driver records")
 
