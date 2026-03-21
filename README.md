@@ -8,6 +8,8 @@
 
 Raw telematics trip data to GLM-ready risk scores. Built for UK motor insurance pricing teams.
 
+**Blog post:** [HMM-Based Telematics Risk Scoring for Insurance Pricing](https://burning-cost.github.io/2026/03/13/insurance-telematics/)
+
 Most telematics scoring tools are either black-box APIs (you get a number, you cannot audit it) or one-off academic scripts that do not run on your data. This library gives you the full pipeline in Python: load 1Hz GPS/accelerometer data, classify driving behaviour using a Hidden Markov Model, aggregate to driver-level risk scores, and produce a feature DataFrame you can drop into your Poisson frequency GLM alongside traditional rating factors.
 
 The academic basis is Jiang & Shi (2024) in NAAJ: HMM latent states capture driving regimes (cautious, normal, aggressive) and the fraction of time in the aggressive state is more predictive of claim frequency than raw speed or harsh event counts alone.
@@ -45,6 +47,8 @@ pip install insurance-telematics
 ```
 
 Requires Python 3.10+. Dependencies: polars, numpy, scipy, hmmlearn, statsmodels, scikit-learn.
+
+> 💬 Questions or feedback? Start a [Discussion](https://github.com/burning-cost/insurance-telematics/discussions). Found it useful? A ⭐ helps others find it.
 
 ## Running the full pipeline on your data
 
