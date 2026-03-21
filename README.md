@@ -43,7 +43,7 @@ Raw 1Hz trip data (CSV or Parquet)
 ## Installation
 
 ```bash
-pip install insurance-telematics
+uv add insurance-telematics
 ```
 
 Requires Python 3.10+. Dependencies: polars, numpy, scipy, hmmlearn, statsmodels, scikit-learn.
