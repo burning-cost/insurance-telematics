@@ -177,3 +177,17 @@ Benchmarked against **raw trip-level feature averages** (mean speed, harsh braki
 - **A/E calibration:** Max A/E deviation by quintile is similar between methods; the HMM advantage is in discrimination (rank ordering), not overall calibration (which is a GLM property shared by both).
 - **Fit time:** The full pipeline (clean + extract + HMM 200 iterations + GLM) takes 30-90s on 300 drivers. Raw averages add effectively zero overhead. For large fleets, HMM fitting should be done on a sample or parallelised via Spark.
 - **Limitation:** The HMM advantage is proportional to how state-structured the true DGP is. On portfolios where driving style is genuinely continuous rather than regime-based, the gain may be smaller. The `TripSimulator` DGP is deliberately state-based, which is the best case for the HMM.
+
+---
+
+## Part of the Burning Cost Toolkit
+
+Open-source Python libraries for UK personal lines insurance pricing. [Browse all libraries](https://burning-cost.github.io/tools/)
+
+| Library | Description |
+|---------|-------------|
+| [insurance-causal](https://github.com/burning-cost/insurance-causal) | DML causal inference — establishes whether HMM state fractions causally drive claims or proxy for other risk factors |
+| [insurance-fairness](https://github.com/burning-cost/insurance-fairness) | FCA proxy discrimination auditing — telematics scores can act as proxies for protected characteristics |
+| [insurance-monitoring](https://github.com/burning-cost/insurance-monitoring) | Model drift detection — monitors whether telematics-derived GLM factors remain well-calibrated over time |
+| [insurance-conformal](https://github.com/burning-cost/insurance-conformal) | Distribution-free prediction intervals — quantifies uncertainty around the Poisson frequency predictions |
+| [insurance-governance](https://github.com/burning-cost/insurance-governance) | Model validation and MRM governance — governance pack for telematics models entering production |
