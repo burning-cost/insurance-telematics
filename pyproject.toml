@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "insurance-telematics"
-version = "0.1.4"
+version = "0.1.5"
 description = "HMM-based driving state classification and GLM-compatible risk scoring from raw telematics trip data"
 readme = "README.md"
 license = "MIT"

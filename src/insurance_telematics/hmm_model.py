@@ -144,9 +144,15 @@ class DrivingStateHMM:
 
         self._model = model
 
-        # Determine state ordering by the mean speed dimension (feature index 0)
-        # so that state 0 is always the lowest-speed (most cautious) state
-        speed_means = model.means_[:, 0]
+        # Determine state ordering by mean speed: use 'mean_speed_kmh' feature index
+        # if present (canonical feature name), otherwise fall back to feature index 0.
+        # Ordering by index 0 may produce non-intuitive state labels if the first
+        # feature is not speed (e.g., if a custom feature list is used).
+        if "mean_speed_kmh" in self.features:
+            speed_dim = self.features.index("mean_speed_kmh")
+        else:
+            speed_dim = 0
+        speed_means = model.means_[:, speed_dim]
         self._state_order = np.argsort(speed_means)
         self._state_rank = np.empty_like(self._state_order)
         self._state_rank[self._state_order] = np.arange(self.n_states)
@@ -403,6 +409,7 @@ class ContinuousTimeHMM:
         self.means_, self.covars_ = self._init_emissions(X, rng)
 
         log_likelihood = -np.inf
+        converged = False
         for iteration in range(self.n_iter):
             # E-step
             gammas, xis, log_lik_new = self._e_step(X, time_deltas)
@@ -412,8 +419,18 @@ class ContinuousTimeHMM:
 
             # Convergence check
             if abs(log_lik_new - log_likelihood) < self.tol:
+                converged = True
                 break
             log_likelihood = log_lik_new
+
+        if not converged:
+            warnings.warn(
+                f"ContinuousTimeHMM EM did not converge after {self.n_iter} iterations "
+                f"(final log-likelihood change: {abs(log_lik_new - log_likelihood):.6f}, "
+                f"tol={self.tol}). Consider increasing n_iter or loosening tol.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         # Order states by mean of the first feature (speed proxy)
         self._state_order = np.argsort(self.means_[:, 0])
@@ -594,10 +611,25 @@ class ContinuousTimeHMM:
         # Normalise each row by log P(observations) to get P(z_t | x).
         log_gamma = log_alpha + log_beta
         for t in range(n_obs):
-            log_gamma[t] -= _logsumexp(log_gamma[t])
+            row_lse = _logsumexp(log_gamma[t])
+            log_gamma[t] -= row_lse
         gammas = np.exp(log_gamma)
         gammas = np.clip(gammas, 0.0, None)
-        gammas /= gammas.sum(axis=1, keepdims=True)  # numerical guard
+        # NaN guard: if a row is all-NaN (from -inf log probabilities), fall back
+        # to uniform distribution and emit a warning.
+        nan_rows = np.isnan(gammas).any(axis=1)
+        if nan_rows.any():
+            warnings.warn(
+                f"_e_step: {nan_rows.sum()} observation(s) produced all-zero "
+                f"forward-backward probabilities (numerical underflow). "
+                f"Replacing with uniform state distribution.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            gammas[nan_rows] = 1.0 / n_states
+        row_sums = gammas.sum(axis=1, keepdims=True)
+        row_sums = np.where(row_sums < 1e-300, 1.0, row_sums)
+        gammas /= row_sums
 
         # Pairwise posteriors xi
         # Normalise by P(observations) = exp(log_likelihood), not per-timestep.

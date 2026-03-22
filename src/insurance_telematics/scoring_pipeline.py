@@ -160,9 +160,24 @@ class TelematicsScoringPipeline:
         X = model_df.select(glm_feature_cols).to_pandas()
 
         # Drop zero-variance and constant columns before GLM to prevent NaN deviance
+        nan_cols = [c for c in X.columns if X[c].isna().all()]
+        if nan_cols:
+            import warnings
+            warnings.warn(
+                f"Dropping {len(nan_cols)} feature(s) that are entirely NaN "                f"(cannot impute): {nan_cols}",
+                UserWarning,
+                stacklevel=2,
+            )
+            X = X.drop(columns=nan_cols)
         X = X.fillna(X.mean())
         zero_var = [c for c in X.columns if X[c].std() < 1e-10]
         if zero_var:
+            import warnings
+            warnings.warn(
+                f"Dropping {len(zero_var)} zero-variance feature(s) before GLM: "                f"{zero_var}. These columns carry no predictive signal.",
+                UserWarning,
+                stacklevel=2,
+            )
             X = X.drop(columns=zero_var)
         if X.shape[1] == 0:
             # No useful features: intercept-only model
