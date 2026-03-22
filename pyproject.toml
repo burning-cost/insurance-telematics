@@ -7,7 +7,7 @@ name = "insurance-telematics"
 version = "0.1.4"
 description = "HMM-based driving state classification and GLM-compatible risk scoring from raw telematics trip data"
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
 requires-python = ">=3.10"
 authors = [{ name = "Burning Cost", email = "pricing.frontier@gmail.com" }]
 keywords = [
