@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7] - 2026-03-23
+
+### Fixed
+- Bumped numpy minimum version from >=1.24 to >=1.25 to ensure compatibility with scipy's use of numpy.exceptions (added in numpy 1.25)
+
+
+
 ## v0.1.6 (2026-03-23)
 - fix: pin hmmlearn>=0.3.3 — versions before 0.3.3 used numpy.core.multiarray which was removed in numpy 2.x; 0.3.3 is the first release shipping numpy 2-compatible wheels
 
