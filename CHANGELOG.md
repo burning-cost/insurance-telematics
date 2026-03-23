@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.1.6 (2026-03-23)
+- fix: pin hmmlearn>=0.3.3 — versions before 0.3.3 used numpy.core.multiarray which was removed in numpy 2.x; 0.3.3 is the first release shipping numpy 2-compatible wheels
+
 ## v0.1.4 (2026-03-22) [unreleased]
 - fix: correct license badge from BSD-3 to MIT
 - fix: use plain string license field for universal setuptools compatibility
@@ -25,4 +28,3 @@
 - Add Related Libraries section to README
 - fix: define trip_features_df and time_deltas in HMM classification code block
 - fix: update polars floor to >=1.0 and fix project URLs
-
