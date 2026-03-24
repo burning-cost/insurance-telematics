@@ -171,7 +171,7 @@ The fraction of time in state 2 per driver is the key GLM covariate. Following J
 
 `aggregate_to_driver()` produces a `composite_risk_score` (0-100) as a weighted combination of all features, scaled to the portfolio range. This is a summary diagnostic — use the individual features as GLM covariates for pricing, not the composite score directly.
 
-## Key papers
+## References
 
 - Jiang, Q. & Shi, Y. (2024). "Auto Insurance Pricing Using Telematics Data: Application of a Hidden Markov Model." *NAAJ* 28(4), pp.822-839.
 - Wüthrich, M.V. (2017). "Covariate Selection from Telematics Car Driving Data." *European Actuarial Journal* 7, pp.89-108.

@@ -1,0 +1,77 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "insurance-telematics"
+abstract: >
+  Raw telematics trip data to GLM-ready risk scores for UK motor insurance
+  pricing. Implements the full pipeline: GPS cleaning, Hidden Markov Model
+  driving state classification (cautious/normal/aggressive), Bühlmann-Straub
+  credibility weighting at driver level, and a Poisson GLM-ready feature
+  DataFrame. Based on Jiang and Shi (2024, NAAJ).
+authors:
+  - name: "Burning Cost Contributors"
+url: "https://github.com/burning-cost/insurance-telematics"
+repository-code: "https://github.com/burning-cost/insurance-telematics"
+license: MIT
+version: "0.1.6"
+date-released: "2026-03-23"
+keywords:
+  - insurance
+  - telematics
+  - hidden Markov model
+  - motor insurance
+  - actuarial
+references:
+  - type: article
+    title: "Auto Insurance Pricing Using Telematics Data: Application of a Hidden Markov Model"
+    authors:
+      - family-names: Jiang
+        given-names: Qianqian
+      - family-names: Shi
+        given-names: Yue
+    journal: "North American Actuarial Journal"
+    volume: 28
+    issue: 4
+    start: 822
+    end: 839
+    year: 2024
+    doi: "10.1080/10920277.2023.2286443"
+  - type: article
+    title: "Covariate Selection from Telematics Car Driving Data"
+    authors:
+      - family-names: Wüthrich
+        given-names: Mario V.
+    journal: "European Actuarial Journal"
+    volume: 7
+    start: 89
+    end: 108
+    year: 2017
+    doi: "10.1007/s13385-017-0149-z"
+  - type: article
+    title: "Boosting Poisson Regression Models with Telematics Car Driving Data"
+    authors:
+      - family-names: Gao
+        given-names: Guangyuan
+      - family-names: Wang
+        given-names: He
+      - family-names: Wüthrich
+        given-names: Mario V.
+    journal: "Machine Learning"
+    volume: 111
+    start: 1787
+    end: 1827
+    year: 2021
+    doi: "10.1007/s10994-021-06092-6"
+  - type: article
+    title: "The Added Value of Dynamically Updating Motor Insurance Prices with Telematics Data"
+    authors:
+      - family-names: Henckaerts
+        given-names: Roel
+      - family-names: Antonio
+        given-names: Katrien
+    journal: "Insurance: Mathematics and Economics"
+    volume: 103
+    start: 79
+    end: 95
+    year: 2022
+    doi: "10.1016/j.insmatheco.2022.01.001"
