@@ -200,6 +200,10 @@ A ready-to-run validation notebook benchmarking this library against simple summ
 | [insurance-survival](https://github.com/burning-cost/insurance-survival) | Customer survival and churn models — telematics-based retention modelling uses survival curves for CLV |
 | [insurance-gam](https://github.com/burning-cost/insurance-gam) | Generalised Additive Models — smooth non-linear telematics score effects without discretising into bands |
 
+## Training Course
+
+Want structured learning? [Insurance Pricing in Python](https://burning-cost.github.io/course) is a 12-module course covering the full pricing workflow. Module 7 covers telematics — HMM-derived driving state features, trip aggregation, and integrating behavioural scores into a Poisson GLM. £97 one-time.
+
 ## Licence
 
 MIT
