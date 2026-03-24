@@ -6,11 +6,9 @@
 [![License](https://img.shields.io/badge/license-MIT-green)]()
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/burning-cost/insurance-telematics/blob/main/notebooks/quickstart.ipynb)
 
-Raw telematics trip data to GLM-ready risk scores. Built for UK motor insurance pricing teams.
+Your telematics provider scores drivers using a black-box algorithm you cannot audit, retrain, or challenge — and raw harsh-braking counts added directly to a GLM treat a single trip's noise as signal. insurance-telematics gives you the full pipeline in auditable Python: classify trip-level behaviour using a Hidden Markov Model into latent driving regimes, aggregate to driver-level state fractions with Bühlmann-Straub credibility weighting, and produce GLM-ready features you understand and can defend to the FCA.
 
 **Blog post:** [HMM-Based Telematics Risk Scoring for Insurance Pricing](https://burning-cost.github.io/2026/03/13/insurance-telematics/)
-
-Most telematics scoring tools are either black-box APIs (you get a number, you cannot audit it) or one-off academic scripts that do not run on your data. This library gives you the full pipeline in Python: load 1Hz GPS/accelerometer data, classify driving behaviour using a Hidden Markov Model, aggregate to driver-level risk scores, and produce a feature DataFrame you can drop into your Poisson frequency GLM alongside traditional rating factors.
 
 The academic basis is Jiang & Shi (2024) in NAAJ: HMM latent states capture driving regimes (cautious, normal, aggressive) and the fraction of time in the aggressive state is more predictive of claim frequency than raw speed or harsh event counts alone.
 
@@ -184,6 +182,15 @@ The fraction of time in state 2 per driver is the key GLM covariate. Following J
 ## Databricks Notebook
 
 A ready-to-run validation notebook benchmarking this library against simple summary features and threshold-based scoring on a 5,000-driver synthetic fleet is at [`notebooks/databricks_validation.py`](notebooks/databricks_validation.py). It covers DGP construction, HMM state recovery accuracy, GLM discrimination comparison, and the full GLM-ready feature export workflow.
+
+
+## Limitations
+
+- The HMM advantage is proportional to how state-structured the true DGP is. On portfolios where driving style varies continuously rather than in discrete regimes, the improvement in Gini may be small. The `TripSimulator` DGP is deliberately state-based, which is the best case for the HMM.
+- `urban_fraction` is computed as a time-fraction, not a distance-fraction. A driver spending 20 minutes in slow urban traffic and 5 minutes on a motorway will have high `urban_fraction` despite low urban distance. This is consistent with risk (time on road matters for frequency) but differs from how some reinsurers define urban exposure. Document this before using it in ceded pricing.
+- HMM state labels are not portable across separately fitted models. State 0 being "cautious" on one portfolio depends on the training data distribution. Do not compare raw state fractions between models fitted on different fleets or time periods.
+- The HMM is stateless across trips. Each trip is scored independently using the fitted emission and transition parameters. Within-trip regime transitions are captured, but across-trip learning requires the continuous-time HMM with per-driver state initialisation.
+- For large fleets (n > 10,000 drivers, 50+ trips each), HMM fitting should be done on a sample or distributed via Spark. The default implementation fits in Python on a single machine and will be slow above this scale.
 
 
 ## Related Libraries
