@@ -12,6 +12,10 @@ Your telematics provider scores drivers using a black-box algorithm you cannot a
 
 The academic basis is Jiang & Shi (2024) in NAAJ: HMM latent states capture driving regimes (cautious, normal, aggressive) and the fraction of time in the aggressive state is more predictive of claim frequency than raw speed or harsh event counts alone.
 
+## Part of the Burning Cost stack
+
+Takes raw trip sensor data (GPS, accelerometer). Feeds HMM-scored, credibility-weighted driver-level features into [insurance-gam](https://github.com/burning-cost/insurance-gam) (as interpretable tariff inputs) and [insurance-causal](https://github.com/burning-cost/insurance-causal) (to separate causal driving style effects from correlated demographics). → [See the full stack](https://burning-cost.github.io/stack/)
+
 ## Why use this?
 
 - Most telematics scoring tools are either black-box APIs you cannot audit, or academic scripts that do not run on production data. This library gives you the full auditable pipeline in Python: GPS cleaning, HMM state classification, credibility-weighted driver scoring, and a Poisson GLM-ready feature DataFrame.
