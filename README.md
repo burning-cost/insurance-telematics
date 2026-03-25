@@ -208,6 +208,14 @@ A ready-to-run validation notebook benchmarking this library against simple summ
 
 Want structured learning? [Insurance Pricing in Python](https://burning-cost.github.io/course) is a 12-module course covering the full pricing workflow. Module 7 covers telematics — HMM-derived driving state features, trip aggregation, and integrating behavioural scores into a Poisson GLM. £97 one-time.
 
+## Community
+
+- **Questions?** Start a [Discussion](https://github.com/burning-cost/insurance-telematics/discussions)
+- **Found a bug?** Open an [Issue](https://github.com/burning-cost/insurance-telematics/issues)
+- **Blog & tutorials:** [burning-cost.github.io](https://burning-cost.github.io)
+
+If this library saves you time, a star on GitHub helps others find it.
+
 ## Licence
 
 MIT
