@@ -61,6 +61,10 @@ predictions = pipe.predict(trips_df)
 
 No raw telematics data? Use `TripSimulator` to generate a realistic synthetic fleet — three driving regimes (cautious, normal, aggressive), Ornstein-Uhlenbeck speed processes, synthetic Poisson claims — so you can prototype the full workflow before your data is available.
 
+---
+
+If this is useful, a ⭐ on GitHub helps others find it.
+
 ## What it does
 
 ```
