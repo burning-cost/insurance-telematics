@@ -5,6 +5,7 @@
 [![Tests](https://github.com/burning-cost/insurance-telematics/actions/workflows/tests.yml/badge.svg)](https://github.com/burning-cost/insurance-telematics/actions/workflows/tests.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)]()
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/burning-cost/insurance-telematics/blob/main/notebooks/quickstart.ipynb)
+[![nbviewer](https://img.shields.io/badge/render-nbviewer-orange)](https://nbviewer.org/github/burning-cost/insurance-telematics/blob/main/notebooks/quickstart.ipynb)
 
 Your telematics provider scores drivers using a black-box algorithm you cannot audit, retrain, or challenge — and raw harsh-braking counts added directly to a GLM treat a single trip's noise as signal. insurance-telematics gives you the full pipeline in auditable Python: classify trip-level behaviour using a Hidden Markov Model into latent driving regimes, aggregate to driver-level state fractions with Bühlmann-Straub credibility weighting, and produce GLM-ready features you understand and can defend to the FCA.
 
