@@ -55,8 +55,11 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/burning-cost/insurance-telematics"
+Homepage = "https://burning-cost.github.io/insurance-telematics"
 Repository = "https://github.com/burning-cost/insurance-telematics"
+Changelog = "https://github.com/burning-cost/insurance-telematics/releases"
+Documentation = "https://burning-cost.github.io/insurance-telematics"
+Issues = "https://github.com/burning-cost/insurance-telematics/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/insurance_telematics"]
