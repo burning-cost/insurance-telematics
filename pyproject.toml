@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "insurance-telematics"
 version = "0.1.7"
-description = "HMM-based driving state classification and GLM-compatible risk scoring from raw telematics trip data"
+description = "Telematics-based insurance pricing: HMM driving state classification and GLM-compatible risk scoring from raw trip data for usage-based insurance (UBI)"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
@@ -18,6 +18,9 @@ keywords = [
     "UBI",
     "motor insurance",
     "driving behaviour",
+    "pricing",
+    "usage-based insurance",
+    "risk scoring",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -29,7 +32,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Mathematics",
-
+    "Topic :: Scientific/Engineering :: Information Analysis",
     "Topic :: Office/Business :: Financial",
 ]
 dependencies = [
@@ -55,11 +58,11 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://burning-cost.github.io/insurance-telematics"
+Homepage = "https://burning-cost.github.io/"
 Repository = "https://github.com/burning-cost/insurance-telematics"
 Changelog = "https://github.com/burning-cost/insurance-telematics/releases"
 Documentation = "https://burning-cost.github.io/insurance-telematics"
-Issues = "https://github.com/burning-cost/insurance-telematics/issues"
+"Bug Tracker" = "https://github.com/burning-cost/insurance-telematics/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/insurance_telematics"]
