@@ -1,39 +1,14 @@
 # insurance-telematics
 
-[![PyPI](https://img.shields.io/pypi/v/insurance-telematics)](https://pypi.org/project/insurance-telematics/) [![Python](https://img.shields.io/pypi/pyversions/insurance-telematics)](https://pypi.org/project/insurance-telematics/) [![Tests](https://github.com/burning-cost/insurance-telematics/actions/workflows/tests.yml/badge.svg)](https://github.com/burning-cost/insurance-telematics/actions/workflows/tests.yml) [![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/burning-cost/insurance-telematics/blob/main/LICENSE) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/burning-cost/insurance-telematics/blob/main/notebooks/quickstart.ipynb) [![nbviewer](https://img.shields.io/badge/render-nbviewer-orange)](https://nbviewer.org/github/burning-cost/insurance-telematics/blob/main/notebooks/quickstart.ipynb)
+Turn raw GPS and accelerometer trip data into GLM-ready driver risk features using Hidden Markov Models — auditable, credibility-weighted, and explainable to the FCA.
 
----
+[![PyPI](https://img.shields.io/pypi/v/insurance-telematics)](https://pypi.org/project/insurance-telematics/) [![Python](https://img.shields.io/pypi/pyversions/insurance-telematics)](https://pypi.org/project/insurance-telematics/) [![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/burning-cost/insurance-telematics/blob/main/LICENSE)
 
-## The problem
+## Why this?
 
-Raw telematics data — accelerometer events, GPS speed, harsh braking counts — does not map directly to GLM rating factors. Adding raw trip averages to a Poisson GLM treats a single motorway run as equivalent to a persistent driving style, and most telematics scoring black boxes cannot be audited, retrained, or challenged when the FCA asks how the score was derived.
-
-The FCA's Consumer Duty and its expectations around pricing data require that telematics-based pricing is explainable. A score produced by a vendor's API is not explainable.
+Raw telematics features — mean speed, harsh braking counts — treat a single motorway run as equivalent to a persistent driving style. HMM state classification separates trip-level noise from genuine behavioural regimes (cautious, normal, aggressive), and the fraction of time in the aggressive state is more predictive of claim frequency than raw averages alone (Jiang & Shi, 2024, NAAJ). Unlike vendor scores, every feature is auditable: you can show a regulator exactly which behaviours drive the output.
 
 **Blog post:** [HMM-Based Telematics Risk Scoring for Insurance Pricing](https://burning-cost.github.io/2026/03/13/insurance-telematics/)
-
----
-
-## Why this library?
-
-Most telematics scoring tools are either black-box vendor APIs you cannot interrogate, or academic scripts that do not run on production data. This library gives you the full auditable pipeline in Python: GPS cleaning, HMM state classification, credibility-weighted driver scoring, and a Poisson GLM-ready feature DataFrame you can hand to a pricing committee and explain factor by factor.
-
-The academic basis is Jiang & Shi (2024, NAAJ): Hidden Markov Model latent states capture driving regimes — cautious, normal, aggressive — and the fraction of time in the aggressive state is more predictive of claim frequency than raw speed or harsh event counts alone.
-
----
-
-## Compared to alternatives
-
-| | Vendor black-box | Raw feature averages | Manual threshold scoring | **insurance-telematics** |
-|---|---|---|---|---|
-| Auditable methodology | No | Yes | Yes | Yes |
-| Captures driving regimes | Possibly | No | Partial | Yes (HMM) |
-| Handles sparse new drivers | Varies | No | No | Yes (credibility weighting) |
-| GLM-ready output | Varies | Manual | Manual | Yes (Polars DataFrame) |
-| FCA-explainable | No | Yes | Yes | Yes |
-| Synthetic data for prototyping | No | No | No | Yes (`TripSimulator`) |
-
----
 
 ## Quickstart
 
@@ -52,11 +27,54 @@ pipe.fit(trips_df, claims_df)
 predictions = pipe.predict(trips_df)
 ```
 
-No raw data yet? `TripSimulator` generates a realistic synthetic fleet — three driving regimes, Ornstein-Uhlenbeck speed processes, synthetic Poisson claims — so you can prototype the full workflow before your data arrives.
+No raw data yet? `TripSimulator` generates a realistic synthetic fleet — three driving regimes, Ornstein-Uhlenbeck speed processes, synthetic Poisson claims — so you can prototype before your data arrives.
 
----
+## Use cases
 
-## The full pipeline
+### 1. Trip scoring for a new-to-telematics portfolio
+
+Score each trip and aggregate to driver level with Bühlmann-Straub credibility weighting. Drivers with fewer than 10 trips fall back to portfolio means automatically.
+
+```python
+from insurance_telematics import load_trips, clean_trips, extract_trip_features
+from insurance_telematics import aggregate_to_driver
+
+trips = load_trips("trips.parquet")
+features = extract_trip_features(clean_trips(trips))
+driver_risk = aggregate_to_driver(features, credibility_threshold=30)
+# driver_risk: one row per driver_id, GLM-ready
+```
+
+### 2. HMM state classification — extracting driving regime features
+
+Classify each trip into latent driving states and derive the regime fractions that feed your Poisson GLM.
+
+```python
+from insurance_telematics import DrivingStateHMM
+
+hmm = DrivingStateHMM(n_states=3)
+hmm.fit(features)
+states = hmm.predict_states(features)
+hmm_features = hmm.driver_state_features(features, states)
+# hmm_features includes state_0_fraction, state_1_fraction, state_2_fraction per driver
+```
+
+With three states the HMM typically recovers: state 0 = cautious (low speed, urban), state 1 = normal (mixed), state 2 = aggressive (high speed variance, high harsh event rate). The `state_2_fraction` is the primary GLM covariate.
+
+### 3. Variable trip length — continuous-time HMM
+
+For portfolios where observation intervals are irregular (trips logged at variable Hz), use `ContinuousTimeHMM` to avoid biasing state estimates toward shorter trips.
+
+```python
+from insurance_telematics import ContinuousTimeHMM
+import numpy as np
+
+time_deltas = np.array(features["trip_duration_min"])
+cthmm = ContinuousTimeHMM(n_states=3)
+cthmm.fit(features, time_deltas=time_deltas)
+```
+
+## Full pipeline
 
 ```
 Raw 1Hz trip data (CSV or Parquet)
@@ -68,28 +86,9 @@ Raw 1Hz trip data (CSV or Parquet)
   → TelematicsScoringPipeline — Poisson GLM producing predicted claim frequency
 ```
 
-```python
-from insurance_telematics import load_trips, clean_trips, extract_trip_features
-from insurance_telematics import DrivingStateHMM, aggregate_to_driver
-
-trips_raw = load_trips("trips.csv")
-trips_clean = clean_trips(trips_raw)
-features = extract_trip_features(trips_clean)
-
-model = DrivingStateHMM(n_states=3)
-model.fit(features)
-states = model.predict_states(features)
-driver_hmm_features = model.driver_state_features(features, states)
-
-driver_risk = aggregate_to_driver(features, credibility_threshold=30)
-driver_risk = driver_risk.join(driver_hmm_features, on="driver_id", how="left")
-```
-
----
-
 ## Input data format
 
-One row per second (1Hz) with these columns:
+One row per second (1Hz):
 
 | Column | Type | Notes |
 |---|---|---|
@@ -102,13 +101,11 @@ One row per second (1Hz) with these columns:
 | `heading_deg` | float | Optional — used for cornering estimation |
 | `driver_id` | string | Optional — "unknown" if absent |
 
-Non-standard column names? Use the `schema` parameter:
+Non-standard column names? Use `schema`:
 
 ```python
 trips = load_trips("raw_data.csv", schema={"gps_speed": "speed_kmh"})
 ```
-
----
 
 ## Features extracted per trip
 
@@ -120,36 +117,20 @@ trips = load_trips("raw_data.csv", schema={"gps_speed": "speed_kmh"})
 - `urban_fraction` — fraction of time at speed < 50 km/h
 - `mean_speed_kmh`, `p95_speed_kmh`, `speed_variation_coeff`
 
----
+## Compared to alternatives
 
-## HMM state classification
-
-With three states the HMM typically produces:
-- State 0: cautious — low speed, low variance, urban driving
-- State 1: normal — mixed road types, moderate speed
-- State 2: aggressive — high speed variance, high harsh event rate
-
-The fraction of time in state 2 per driver is the primary GLM covariate. Following Jiang & Shi (2024), this outperforms raw feature averages as a predictor of claim frequency.
-
-```python
-from insurance_telematics import DrivingStateHMM, ContinuousTimeHMM
-import numpy as np
-
-hmm = DrivingStateHMM(n_states=3)
-hmm.fit(trip_features_df)
-states = hmm.predict_states(trip_features_df)
-
-# Continuous-time variant for variable trip lengths
-time_deltas = np.ones(len(trip_features_df))  # inter-observation intervals in minutes
-cthmm = ContinuousTimeHMM(n_states=3)
-cthmm.fit(trip_features_df, time_deltas=time_deltas)
-```
-
----
+| | Vendor black-box | Raw feature averages | Manual threshold scoring | **insurance-telematics** |
+|---|---|---|---|---|
+| Auditable methodology | No | Yes | Yes | Yes |
+| Captures driving regimes | Possibly | No | Partial | Yes (HMM) |
+| Handles sparse new drivers | Varies | No | No | Yes (credibility weighting) |
+| GLM-ready output | Varies | Manual | Manual | Yes (Polars DataFrame) |
+| FCA-explainable | No | Yes | Yes | Yes |
+| Synthetic data for prototyping | No | No | No | Yes (`TripSimulator`) |
 
 ## Validated performance
 
-On a synthetic fleet of 5,000 drivers with 30 trips each and a known 3-state DGP (cautious/moderate/aggressive, Ornstein-Uhlenbeck speed processes):
+On a synthetic fleet of 5,000 drivers × 30 trips with a known 3-state DGP:
 
 | Approach | Gini improvement | Feature computation |
 |---|---|---|
@@ -157,42 +138,29 @@ On a synthetic fleet of 5,000 drivers with 30 trips each and a known 3-state DGP
 | Threshold-based scoring | +1–3pp | < 1s |
 | HMM state fractions (this library) | **+5–10pp** | 30–90s |
 
-The HMM advantage comes from separating persistent driving style from trip-level noise. The `state_2_fraction` (aggressive driving) achieves Spearman rho ≥ 0.70 with the true aggressive fraction from the DGP. Correct identification of top-quartile high-risk drivers: > 50% (vs 25% at random).
+`state_2_fraction` achieves Spearman rho ≥ 0.70 with the true aggressive fraction from the DGP. Correct identification of top-quartile high-risk drivers: > 50% (vs 25% at random). The HMM advantage is proportional to how regime-structured the true DGP is — on portfolios with continuously varying style, expect closer to 3pp.
 
-Fit time scales with portfolio size: 30–90 seconds for 5,000 drivers × 30 trips on Databricks serverless. For fleets above 50,000 drivers, batch by cohort or use Spark UDFs.
+Fit time: 30–90 seconds for 5,000 drivers × 30 trips on Databricks serverless. For fleets above 50,000 drivers, batch by cohort or use Spark UDFs.
 
 Full validation notebook: `notebooks/databricks_validation.py`.
 
----
-
-## FCA context
-
-The FCA's Consumer Duty (2023) and its ongoing scrutiny of data-driven pricing require that pricing models are explainable and do not create unjustified cross-subsidies. A vendor telematics score that you cannot decompose into features is difficult to defend under this framework. The HMM state fractions and the trip-level features computed by this library are fully auditable: you can show a regulator exactly which behaviours drive the score.
-
----
-
 ## Limitations
 
-- The HMM advantage is proportional to how state-structured the true DGP is. On portfolios where driving style varies continuously rather than in discrete regimes, the Gini improvement may be closer to 3pp than 10pp.
 - Below 10 trips per driver, state estimation variance is high. Use credibility-weighted summary features below this threshold.
-- HMM state labels are not portable across separately fitted models. State 0 being "cautious" depends on the training data distribution. Do not compare raw state fractions between models fitted on different fleets or time periods.
-- `urban_fraction` is a time-fraction, not a distance-fraction. Document this before using it in ceded pricing, where some reinsurers define urban exposure on a distance basis.
-
----
+- HMM state labels are not portable across separately fitted models. Do not compare raw state fractions between models fitted on different fleets or time periods.
+- `urban_fraction` is a time-fraction, not a distance-fraction. Document this before using it in ceded pricing where some reinsurers define urban exposure on a distance basis.
 
 ## Part of the Burning Cost stack
 
-Takes raw trip sensor data (GPS, accelerometer). Feeds HMM-scored, credibility-weighted driver-level features into [insurance-gam](https://github.com/burning-cost/insurance-gam) and [insurance-causal](https://github.com/burning-cost/insurance-causal). [See the full stack](https://burning-cost.github.io/stack/)
+Takes raw trip sensor data (GPS, accelerometer). Feeds HMM-scored, credibility-weighted driver-level features into [insurance-gam](https://github.com/burning-cost/insurance-gam) and [insurance-causal](https://github.com/burning-cost/insurance-causal).
 
-| Library | Description |
+| Library | Role |
 |---|---|
-| [insurance-gam](https://github.com/burning-cost/insurance-gam) | GAMs — smooth non-linear telematics score effects without discretising into bands |
-| [insurance-causal](https://github.com/burning-cost/insurance-causal) | DML causal inference — separates causal driving style effects from correlated demographics |
+| [insurance-gam](https://github.com/burning-cost/insurance-gam) | Smooth non-linear telematics score effects without discretising into bands |
+| [insurance-causal](https://github.com/burning-cost/insurance-causal) | DML — separates causal driving style effects from correlated demographics |
 | [insurance-fairness](https://github.com/burning-cost/insurance-fairness) | FCA proxy discrimination auditing — telematics scores can proxy for protected characteristics |
-| [insurance-monitoring](https://github.com/burning-cost/insurance-monitoring) | Model drift detection — monitors whether telematics-derived GLM factors remain calibrated |
+| [insurance-monitoring](https://github.com/burning-cost/insurance-monitoring) | Drift detection — monitors whether telematics-derived GLM factors remain calibrated |
 | [insurance-governance](https://github.com/burning-cost/insurance-governance) | Model validation and MRM governance — sign-off pack for telematics models in production |
-
----
 
 ## References
 
@@ -200,8 +168,6 @@ Takes raw trip sensor data (GPS, accelerometer). Feeds HMM-scored, credibility-w
 - Wüthrich, M.V. (2017). "Covariate Selection from Telematics Car Driving Data." *European Actuarial Journal* 7, pp.89–108.
 - Gao, G., Wang, H. & Wüthrich, M.V. (2021). "Boosting Poisson Regression Models with Telematics Car Driving Data." *Machine Learning* 111, pp.1787–1827.
 - Henckaerts, R. & Antonio, K. (2022). "The Added Value of Dynamically Updating Motor Insurance Prices with Telematics Data." *Insurance: Mathematics and Economics* 103, pp.79–95.
-
----
 
 ## Community
 
