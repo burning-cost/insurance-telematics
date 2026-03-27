@@ -3,7 +3,7 @@
 [![PyPI](https://img.shields.io/pypi/v/insurance-telematics)](https://pypi.org/project/insurance-telematics/)
 [![Python](https://img.shields.io/pypi/pyversions/insurance-telematics)](https://pypi.org/project/insurance-telematics/)
 [![Tests](https://github.com/burning-cost/insurance-telematics/actions/workflows/tests.yml/badge.svg)](https://github.com/burning-cost/insurance-telematics/actions/workflows/tests.yml)
-[![License](https://img.shields.io/badge/license-MIT-green)]()
+[![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/burning-cost/insurance-telematics/blob/main/LICENSE)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/burning-cost/insurance-telematics/blob/main/notebooks/quickstart.ipynb)
 [![nbviewer](https://img.shields.io/badge/render-nbviewer-orange)](https://nbviewer.org/github/burning-cost/insurance-telematics/blob/main/notebooks/quickstart.ipynb)
 
@@ -63,8 +63,6 @@ No raw telematics data? Use `TripSimulator` to generate a realistic synthetic fl
 
 ---
 
-If this is useful, a ⭐ on GitHub helps others find it.
-
 ## What it does
 
 ```
@@ -84,7 +82,7 @@ uv add insurance-telematics
 
 Requires Python 3.10+. Dependencies: polars, numpy, scipy, hmmlearn, statsmodels, scikit-learn.
 
-> 💬 Questions or feedback? Start a [Discussion](https://github.com/burning-cost/insurance-telematics/discussions). Found it useful? A ⭐ helps others find it.
+> Questions or feedback? Start a [Discussion](https://github.com/burning-cost/insurance-telematics/discussions).
 
 ## Running the full pipeline on your data
 
@@ -219,7 +217,6 @@ Want structured learning? [Insurance Pricing in Python](https://burning-cost.git
 - **Found a bug?** Open an [Issue](https://github.com/burning-cost/insurance-telematics/issues)
 - **Blog & tutorials:** [burning-cost.github.io](https://burning-cost.github.io)
 
-If this library saves you time, a star on GitHub helps others find it.
 
 ## Licence
 
