@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "insurance-telematics"
-version = "0.1.7"
+version = "0.1.8"
 description = "Telematics-based insurance pricing: HMM driving state classification and GLM-compatible risk scoring from raw trip data for usage-based insurance (UBI)"
 readme = "README.md"
 license = "MIT"
@@ -43,6 +43,7 @@ dependencies = [
     "hmmlearn>=0.3.3",
     "statsmodels>=0.14.5",
     "scikit-learn>=1.3",
+    "pandas>=2.0",
 ]
 
 [project.optional-dependencies]

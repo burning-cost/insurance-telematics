@@ -50,7 +50,7 @@ ALL_SCHEMA_COLUMNS: list[str] = REQUIRED_COLUMNS + OPTIONAL_COLUMNS
 def load_trips(
     path: str | os.PathLike,
     *,
-    schema: dict[str, pl.DataType] | None = None,
+    schema: dict[str, str] | None = None,
 ) -> pl.DataFrame:
     """
     Load telematics trip data from CSV or Parquet, validate schema, and
