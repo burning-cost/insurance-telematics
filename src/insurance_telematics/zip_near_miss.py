@@ -495,9 +495,8 @@ class ZIPNearMissModel:
         nme_rate = (total_counts / safe_exposure).tolist()
 
         # Zero fraction per driver
-        n_event_types = len(self.event_types)
-        n_obs_per_driver = X_zeros  # pre-computed in _aggregate_driver_arrays
-        zero_frac = (n_obs_per_driver / max(n_event_types, 1)).tolist()
+        # X_zeros is already the fraction (zero_count / n_weeks / n_events)
+        zero_frac = X_zeros.tolist()
 
         rows: dict[str, list] = {
             "driver_id": driver_ids,
