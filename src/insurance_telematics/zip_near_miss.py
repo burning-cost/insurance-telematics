@@ -19,6 +19,12 @@ The EM algorithm alternates between:
   E-step: compute posterior group membership τ_{i,g} for each driver i
   M-step: re-fit ZIP parameters for each group g using weighted MLE
 
+The unit of observation for ZIP fitting is a (driver, week, event_type) triple.
+Driver-level posteriors τ_{i,g} are computed from the sum of weekly ZIP
+log-likelihoods over all weeks and event types for that driver. This correctly
+handles the structural-zero problem: a driver with many zero-event weeks gets
+high posterior for the low-rate / high-pi group.
+
 ZIP per group is estimated via statsmodels ZeroInflatedPoisson (intercept-only
 or with covariates). Exposure enters as a log-offset in the count component.
 After fitting, groups are relabelled in ascending order of mean NME rate so
@@ -42,7 +48,6 @@ import numpy as np
 import polars as pl
 
 # statsmodels is a required dependency (>=0.14.5)
-import statsmodels.api as sm
 from statsmodels.discrete.count_model import (
     ZeroInflatedPoisson,
     ZeroInflatedGeneralizedPoisson,
@@ -93,7 +98,6 @@ class NearMissSimulator:
         # Group parameters: (lambda_rate_per_100km, zero_inflation_prob, mixing_weight)
         # Designed so groups are clearly separable for ground-truth validation.
         # Safe group: high zero-inflation, very low rate
-        # Medium group: moderate zero-inflation, moderate rate
         # Risky group: low zero-inflation, high rate
         if n_groups == 1:
             self._group_params = [
@@ -101,16 +105,16 @@ class NearMissSimulator:
             ]
         elif n_groups == 2:
             self._group_params = [
-                {"rate": 0.3, "pi": 0.60, "weight": 0.55},
-                {"rate": 1.5, "pi": 0.15, "weight": 0.45},
+                {"rate": 0.1, "pi": 0.70, "weight": 0.55},
+                {"rate": 1.5, "pi": 0.10, "weight": 0.45},
             ]
         else:
             # 3+ groups: evenly-spaced rates, linearly decreasing zero-inflation
             weights_raw = np.ones(n_groups)
             weights_raw[0] *= 1.2  # slightly more drivers in safest group
             weights = weights_raw / weights_raw.sum()
-            rates = np.linspace(0.2, 2.5, n_groups)
-            pi_vals = np.linspace(0.65, 0.10, n_groups)
+            rates = np.linspace(0.08, 1.8, n_groups)
+            pi_vals = np.linspace(0.75, 0.05, n_groups)
             self._group_params = [
                 {"rate": float(rates[g]), "pi": float(pi_vals[g]), "weight": float(weights[g])}
                 for g in range(n_groups)
@@ -156,7 +160,7 @@ class NearMissSimulator:
             g = int(driver_groups[i])
             params = self._group_params[g]
             rate_per_100km = params["rate"]
-            pi = params["pi"]  # probability of structural zero
+            pi = params["pi"]  # probability of structural zero for each event-week obs
 
             for w in range(n_weeks):
                 # Weekly exposure: log-normal around 200 km, clipped to [20, 800]
@@ -166,15 +170,14 @@ class NearMissSimulator:
 
                 event_counts: dict[str, int] = {}
                 for event_type in _DEFAULT_EVENT_TYPES:
-                    # ZIP draw: with probability pi, structural zero
+                    # ZIP draw at the weekly-event level:
+                    # with probability pi, structural zero (regardless of exposure)
                     if rng.uniform() < pi:
                         count = 0
                     else:
                         # Poisson rate scales with exposure
                         mu = rate_per_100km * exposure_km / 100.0
-                        # Add small event-type-specific multiplier for realism
-                        type_multiplier = 1.0 + 0.3 * _DEFAULT_EVENT_TYPES.index(event_type)
-                        count = int(rng.poisson(mu * type_multiplier * 0.5 + 0.01))
+                        count = int(rng.poisson(max(mu, 1e-8)))
                     event_counts[event_type] = count
 
                 rows.append(
@@ -204,9 +207,14 @@ class ZIPNearMissModel:
     driver fleet. This is more appropriate than a GLM for ADAS event counts
     because:
 
-    1. Event counts are structurally zero-inflated (no exposure ≠ unsafe)
+    1. Event counts are structurally zero-inflated (no trigger != unsafe driver)
     2. The fleet is heterogeneous — a single ZIP is too restrictive
     3. Group membership probabilities are directly useful as pricing features
+
+    The EM works at the (driver, week, event_type) observation level. Driver
+    posteriors τ_{i,g} are computed from the sum of weekly ZIP log-likelihoods
+    across all weeks and event types. This correctly distinguishes structural
+    zeros (high-pi group) from sampling zeros (low-rate group with exposure).
 
     Parameters
     ----------
@@ -234,8 +242,7 @@ class ZIPNearMissModel:
     zip_params_ : dict
         Per-group fitted ZIP/ZIGP parameter dicts. Keys are group indices.
     group_posteriors_ : np.ndarray, shape (n_drivers, n_groups)
-        Driver-level posterior group membership probabilities τ_{i,g},
-        marginalised over weeks.
+        Driver-level posterior group membership probabilities τ_{i,g}.
     log_likelihood_history_ : list[float]
         Observed-data log-likelihood after each EM iteration.
     driver_ids_ : list[str]
@@ -311,7 +318,7 @@ class ZIPNearMissModel:
 
         rng = np.random.default_rng(self.random_state)
 
-        # Aggregate to driver-level for EM computation
+        # Sorted driver IDs for stable indexing
         driver_ids = (
             weekly_counts.select("driver_id")
             .unique()
@@ -320,21 +327,43 @@ class ZIPNearMissModel:
         )
         self.driver_ids_ = driver_ids
         n_drivers = len(driver_ids)
+        driver_idx_map = {d: i for i, d in enumerate(driver_ids)}
 
-        # Build per-driver aggregated arrays: shape (n_drivers, n_event_types)
-        # X_counts[i, j] = total events for driver i, event type j
-        # X_exposure[i] = total exposure_km for driver i
-        X_counts, X_exposure, X_zeros = self._aggregate_driver_arrays(
-            weekly_counts, driver_ids, covariates
+        # Build observation arrays at the (driver, week, event_type) level
+        # obs_y[k] = count, obs_exp[k] = exposure_km, obs_driver[k] = driver index
+        obs_y, obs_exp, obs_driver = self._build_obs_arrays(
+            weekly_counts, driver_idx_map
         )
+        n_obs = len(obs_y)
 
-        # Initialise mixing weights uniformly + small noise
+        # Initialise mixing weights uniformly
         self.mixing_weights_ = np.ones(self.n_groups) / self.n_groups
-        noise = rng.dirichlet(np.ones(self.n_groups) * 10)
-        self.mixing_weights_ = 0.9 * self.mixing_weights_ + 0.1 * noise
 
-        # Initialise τ (posteriors) with random assignment
-        tau = rng.dirichlet(np.ones(self.n_groups) * 2, size=n_drivers)
+        # Initialise driver posteriors by zero-fraction quantile bands.
+        # Sort drivers by their per-driver zero fraction across all event types
+        # and assign to groups in equal-sized quantile bands. This breaks
+        # the symmetry that causes all groups to converge to the same parameters.
+        driver_zero_frac = np.zeros(n_drivers)
+        obs_is_zero = (obs_y == 0).astype(float)
+        obs_count_per_driver = np.zeros(n_drivers)
+        np.add.at(driver_zero_frac, obs_driver, obs_is_zero)
+        np.add.at(obs_count_per_driver, obs_driver, 1.0)
+        driver_zero_frac /= np.where(obs_count_per_driver > 0, obs_count_per_driver, 1.0)
+
+        # Assign drivers to groups by quantile of zero fraction
+        sort_idx = np.argsort(driver_zero_frac)
+        group_assignments = np.zeros(n_drivers, dtype=int)
+        boundaries = np.linspace(0, n_drivers, self.n_groups + 1).astype(int)
+        for g in range(self.n_groups):
+            group_assignments[sort_idx[boundaries[g]: boundaries[g + 1]]] = g
+
+        # Soft initialisation: high mass on assigned group, small mass on others
+        tau = np.full((n_drivers, self.n_groups), 0.05 / max(self.n_groups - 1, 1))
+        for i in range(n_drivers):
+            tau[i, group_assignments[i]] = 0.95
+        # Add small random perturbation to avoid exact symmetry
+        tau += rng.uniform(0, 0.02, size=(n_drivers, self.n_groups))
+        tau /= tau.sum(axis=1, keepdims=True)
 
         # EM loop
         self.log_likelihood_history_ = []
@@ -342,13 +371,13 @@ class ZIPNearMissModel:
 
         for iteration in range(self.max_iter):
             # M-step: update parameters given current τ
-            self._m_step(X_counts, X_exposure, tau, covariates)
+            self._m_step(obs_y, obs_exp, obs_driver, tau, n_drivers)
 
             # E-step: update τ given current parameters
-            tau = self._e_step(X_counts, X_exposure, tau)
+            tau = self._e_step(obs_y, obs_exp, obs_driver, n_drivers)
 
             # Observed-data log-likelihood
-            ll = self._observed_log_likelihood(X_counts, X_exposure)
+            ll = self._observed_log_likelihood(obs_y, obs_exp, obs_driver, n_drivers)
             self.log_likelihood_history_.append(ll)
 
             delta = ll - prev_ll
@@ -359,7 +388,7 @@ class ZIPNearMissModel:
         self.group_posteriors_ = tau  # (n_drivers, n_groups)
 
         # Post-fit: relabel groups in ascending mean NME rate order
-        self._relabel_groups_by_rate(X_counts, X_exposure)
+        self._relabel_groups_by_rate(obs_y, obs_exp, obs_driver, n_drivers)
 
         return self
 
@@ -387,23 +416,21 @@ class ZIPNearMissModel:
             .sort("driver_id")["driver_id"]
             .to_list()
         )
-        X_counts, X_exposure, _ = self._aggregate_driver_arrays(
-            weekly_counts, driver_ids, covariates=None
-        )
-        tau = self._e_step(X_counts, X_exposure, tau=None)
+        driver_idx_map = {d: i for i, d in enumerate(driver_ids)}
+        obs_y, obs_exp, obs_driver = self._build_obs_arrays(weekly_counts, driver_idx_map)
+        tau = self._e_step(obs_y, obs_exp, obs_driver, len(driver_ids))
 
-        rows = {"driver_id": driver_ids}
+        rows: dict = {"driver_id": driver_ids}
         for g in range(self.n_groups):
             rows[f"prob_group_{g}"] = tau[:, g].tolist()
-
         return pl.DataFrame(rows)
 
     def predict_rate(self, weekly_counts: pl.DataFrame) -> pl.DataFrame:
         """
         Return predicted NME rate (events per km) per driver per event type.
 
-        Rate is the group-posterior-weighted mean of the per-group Poisson rates,
-        marginalised over the driver's exposure distribution.
+        Rate is the group-posterior-weighted expected ZIP rate, where the ZIP
+        expected rate is (1 - π_g) * λ_g.
 
         Parameters
         ----------
@@ -425,26 +452,24 @@ class ZIPNearMissModel:
             .sort("driver_id")["driver_id"]
             .to_list()
         )
-        X_counts, X_exposure, _ = self._aggregate_driver_arrays(
-            weekly_counts, driver_ids, covariates=None
-        )
-        tau = self._e_step(X_counts, X_exposure, tau=None)
+        driver_idx_map = {d: i for i, d in enumerate(driver_ids)}
+        obs_y, obs_exp, obs_driver = self._build_obs_arrays(weekly_counts, driver_idx_map)
+        tau = self._e_step(obs_y, obs_exp, obs_driver, len(driver_ids))
 
-        rows: dict[str, list] = {"driver_id": driver_ids}
-        for j, event_type in enumerate(self.event_types):
-            rates_per_group = np.zeros(self.n_groups)
-            for g in range(self.n_groups):
-                params = self.zip_params_.get(g, {})
-                # lambda per unit exposure; intercept-only model stores mean rate
-                lam = params.get("lambda_per_km", 0.0)
-                pi_g = params.get("pi", 0.0)
-                # Expected rate from ZIP: (1 - pi) * lambda
-                rates_per_group[g] = (1.0 - pi_g) * lam
+        # Per-group expected rates (same for all event types in intercept-only model)
+        rates_per_group = np.zeros(self.n_groups)
+        for g in range(self.n_groups):
+            params = self.zip_params_.get(g, {})
+            lam = params.get("lambda_per_km", 0.0)
+            pi_g = params.get("pi", 0.0)
+            rates_per_group[g] = (1.0 - pi_g) * lam
 
-            # Weighted rate: sum_g tau_{i,g} * rate_g
-            predicted = tau @ rates_per_group  # (n_drivers,)
-            rows[f"predicted_rate_{event_type}"] = predicted.tolist()
+        # Driver-level predicted rate: τ @ rates_per_group
+        predicted_rate = tau @ rates_per_group  # (n_drivers,)
 
+        rows: dict = {"driver_id": driver_ids}
+        for event_type in self.event_types:
+            rows[f"predicted_rate_{event_type}"] = predicted_rate.tolist()
         return pl.DataFrame(rows)
 
     def driver_risk_features(self, weekly_counts: pl.DataFrame) -> pl.DataFrame:
@@ -480,25 +505,32 @@ class ZIPNearMissModel:
             .sort("driver_id")["driver_id"]
             .to_list()
         )
-        X_counts, X_exposure, X_zeros = self._aggregate_driver_arrays(
-            weekly_counts, driver_ids, covariates=None
-        )
-        tau = self._e_step(X_counts, X_exposure, tau=None)
+        driver_idx_map = {d: i for i, d in enumerate(driver_ids)}
+        obs_y, obs_exp, obs_driver = self._build_obs_arrays(weekly_counts, driver_idx_map)
+        tau = self._e_step(obs_y, obs_exp, obs_driver, len(driver_ids))
+        n_drivers = len(driver_ids)
 
         # Dominant group
         dominant = tau.argmax(axis=1).tolist()
 
-        # Total NME rate per km
-        total_counts = X_counts.sum(axis=1)  # (n_drivers,)
-        # Avoid division by zero for drivers with no exposure
-        safe_exposure = np.where(X_exposure > 0, X_exposure, 1.0)
-        nme_rate = (total_counts / safe_exposure).tolist()
+        # Total NME rate per km per driver: sum events / sum exposure per event_type
+        # obs_exp is per observation (same exposure for all events in same week)
+        total_events_per_driver = np.zeros(n_drivers)
+        total_exp_per_driver = np.zeros(n_drivers)
+        np.add.at(total_events_per_driver, obs_driver, obs_y)
+        np.add.at(total_exp_per_driver, obs_driver, obs_exp)
+        safe_exp = np.where(total_exp_per_driver > 0, total_exp_per_driver, 1.0)
+        nme_rate = (total_events_per_driver / safe_exp).tolist()
 
-        # Zero fraction per driver
-        # X_zeros is already the fraction (zero_count / n_weeks / n_events)
-        zero_frac = X_zeros.tolist()
+        # Zero fraction: fraction of observations that are zero per driver
+        obs_count = np.zeros(n_drivers)
+        zero_count = np.zeros(n_drivers)
+        np.add.at(obs_count, obs_driver, 1.0)
+        np.add.at(zero_count, obs_driver, (obs_y == 0).astype(float))
+        safe_obs = np.where(obs_count > 0, obs_count, 1.0)
+        zero_frac = (zero_count / safe_obs).tolist()
 
-        rows: dict[str, list] = {
+        rows: dict = {
             "driver_id": driver_ids,
             "dominant_group": dominant,
             "nme_rate_per_km": nme_rate,
@@ -506,7 +538,6 @@ class ZIPNearMissModel:
         }
         for g in range(self.n_groups):
             rows[f"prob_group_{g}"] = tau[:, g].tolist()
-
         return pl.DataFrame(rows)
 
     # ------------------------------------------------------------------
@@ -515,253 +546,304 @@ class ZIPNearMissModel:
 
     def _e_step(
         self,
-        X_counts: np.ndarray,
-        X_exposure: np.ndarray,
-        tau: Optional[np.ndarray],
+        obs_y: np.ndarray,
+        obs_exp: np.ndarray,
+        obs_driver: np.ndarray,
+        n_drivers: int,
     ) -> np.ndarray:
         """
         Compute posterior group membership τ_{i,g} for each driver.
 
-        Parameters
-        ----------
-        X_counts : (n_drivers, n_event_types)
-        X_exposure : (n_drivers,)
-        tau : current posteriors (unused — recomputed from scratch each step)
+        Driver i's log-likelihood under group g is the sum of weekly ZIP
+        log-likelihoods across all observations belonging to driver i.
 
         Returns
         -------
         np.ndarray, shape (n_drivers, n_groups)
             Normalised posterior responsibilities.
         """
-        n_drivers = X_counts.shape[0]
         log_resp = np.zeros((n_drivers, self.n_groups))
 
         for g in range(self.n_groups):
-            log_resp[:, g] = (
-                np.log(self.mixing_weights_[g] + 1e-300)
-                + self._group_log_likelihood(X_counts, X_exposure, g)
-            )
+            # Per-observation log-likelihood under group g
+            obs_ll = self._obs_log_likelihood(obs_y, obs_exp, g)  # (n_obs,)
+            # Sum over observations belonging to each driver
+            driver_ll = np.zeros(n_drivers)
+            np.add.at(driver_ll, obs_driver, obs_ll)
+            log_resp[:, g] = np.log(self.mixing_weights_[g] + 1e-300) + driver_ll
 
         # Numerically stable softmax over groups
         log_resp -= log_resp.max(axis=1, keepdims=True)
         resp = np.exp(log_resp)
-        resp /= resp.sum(axis=1, keepdims=True)
+        resp_sum = resp.sum(axis=1, keepdims=True)
+        resp /= np.where(resp_sum > 0, resp_sum, 1.0)
         return resp
 
     def _m_step(
         self,
-        X_counts: np.ndarray,
-        X_exposure: np.ndarray,
+        obs_y: np.ndarray,
+        obs_exp: np.ndarray,
+        obs_driver: np.ndarray,
         tau: np.ndarray,
-        covariates: Optional[list[str]],
+        n_drivers: int,
     ) -> None:
         """
         Update mixing weights and per-group ZIP parameters.
 
-        Parameters
-        ----------
-        X_counts : (n_drivers, n_event_types)
-        X_exposure : (n_drivers,)
-        tau : (n_drivers, n_groups) — current posteriors
-        covariates : unused in intercept-only mode (reserved for future use)
+        Each observation is weighted by the posterior of its driver: w_{k,g} = τ_{driver(k),g}.
         """
-        # Update mixing weights: ω_g = mean_i τ_{i,g}
+        # Update mixing weights
         self.mixing_weights_ = tau.mean(axis=0)
         self.mixing_weights_ = np.clip(self.mixing_weights_, 1e-8, None)
         self.mixing_weights_ /= self.mixing_weights_.sum()
 
-        # Update per-group ZIP parameters
+        # Broadcast driver posteriors to observations
+        obs_tau = tau[obs_driver]  # (n_obs, n_groups)
+
         for g in range(self.n_groups):
-            w_g = tau[:, g]  # (n_drivers,)
-            self.zip_params_[g] = self._fit_group_zip(X_counts, X_exposure, w_g)
+            w_obs_g = obs_tau[:, g]  # (n_obs,) posterior weight per observation
+            self.zip_params_[g] = self._fit_group_zip(obs_y, obs_exp, w_obs_g)
 
     def _fit_group_zip(
         self,
-        X_counts: np.ndarray,
-        X_exposure: np.ndarray,
-        w_g: np.ndarray,
+        obs_y: np.ndarray,
+        obs_exp: np.ndarray,
+        w_obs: np.ndarray,
     ) -> dict:
         """
-        Fit an intercept-only ZIP (or ZIGP) to event count data for one group.
+        Fit an intercept-only ZIP (or ZIGP) to weighted observations.
 
-        Uses weighted MLE via statsmodels. Exposure enters as log-offset.
-        Falls back to method-of-moments if statsmodels optimisation fails.
+        Uses statsmodels with weighted MLE. Falls back to method-of-moments
+        if statsmodels optimisation fails.
 
         Parameters
         ----------
-        X_counts : (n_drivers, n_event_types) — total counts per driver
-        X_exposure : (n_drivers,) — total exposure per driver in km
-        w_g : (n_drivers,) — posterior weights for this group
+        obs_y : (n_obs,) — event counts per observation
+        obs_exp : (n_obs,) — exposure_km per observation
+        w_obs : (n_obs,) — posterior weights for this group
 
         Returns
         -------
         dict with keys:
-            ``lambda_per_km`` — Poisson rate per km (across all event types)
+            ``lambda_per_km`` — Poisson rate per km
             ``pi`` — zero-inflation probability
         """
-        n_drivers = X_counts.shape[0]
+        eff_n = float(w_obs.sum())
+        if eff_n < 2.0:
+            return self._mom_zip(obs_y, obs_exp, w_obs)
 
-        # Sum across event types for a single aggregate count series
-        y = X_counts.sum(axis=1)  # (n_drivers,)
-        log_offset = np.log(np.clip(X_exposure, 1e-6, None))
-
-        # Only attempt statsmodels fit when there is enough effective weight
-        eff_n = float(w_g.sum())
-        if eff_n < 2.0 or y.max() == 0:
-            return self._mom_zip(y, X_exposure, w_g)
+        log_offset = np.log(np.clip(obs_exp, 1e-6, None))
 
         try:
-            params = self._statsmodels_zip_fit(y, log_offset, w_g)
+            params = self._statsmodels_zip_fit(obs_y, log_offset, w_obs)
         except Exception:
-            params = self._mom_zip(y, X_exposure, w_g)
+            params = self._mom_zip(obs_y, obs_exp, w_obs)
 
         return params
 
     def _statsmodels_zip_fit(
         self,
-        y: np.ndarray,
+        obs_y: np.ndarray,
         log_offset: np.ndarray,
-        w_g: np.ndarray,
+        w_obs: np.ndarray,
     ) -> dict:
         """
-        Fit intercept-only ZIP via statsmodels with exposure offset.
+        Fit intercept-only ZIP or ZIGP via weighted MLE.
 
-        statsmodels requires pandas DataFrames. We bridge polars -> numpy ->
-        pandas here to keep the rest of the code polars-native.
+        For ZIP: uses scipy.optimize with a closed-form weighted log-likelihood.
+        statsmodels ZeroInflatedPoisson.freq_weights is effectively ignored in
+        the optimiser, so we implement the weighted objective directly in scipy.
+
+        For ZIGP (use_generalised=True): uses statsmodels with a weighted
+        subsample, which correctly handles freq_weights as case counts.
+
+        Exposure enters as a log-offset in the Poisson component.
         """
-        import pandas as pd
+        from scipy.optimize import minimize
+        from scipy.special import gammaln
 
-        n = len(y)
-        # Intercept-only design matrix
-        X_design = pd.DataFrame({"const": np.ones(n)})
+        w_sum = float(w_obs.sum())
+        if w_sum < 1e-12:
+            return {"lambda_per_km": 1e-4, "pi": 0.5}
 
-        # Normalise weights to sum to sample size (statsmodels convention)
-        w_norm = w_g * n / (w_g.sum() + 1e-12)
+        if self.use_generalised:
+            # ZIGP via statsmodels with weighted subsample
+            return self._statsmodels_zigp_weighted(obs_y, log_offset, w_obs)
+
+        # ZIP via scipy weighted MLE
+        def neg_wll(params: np.ndarray) -> float:
+            logit_pi, log_lam = params
+            pi = 1.0 / (1.0 + np.exp(-logit_pi))
+            lam = np.exp(log_lam)
+            mu = lam * np.exp(log_offset)
+            mu = np.clip(mu, 1e-12, None)
+            log_pi = np.log(pi + 1e-300)
+            log1mpi = np.log(1.0 - pi + 1e-300)
+            ll = np.where(
+                obs_y == 0,
+                np.logaddexp(log_pi, log1mpi - mu),
+                log1mpi + obs_y * np.log(mu) - mu - gammaln(obs_y + 1.0),
+            )
+            return -float(np.dot(w_obs, ll))
+
+        # Smart initialisation from weighted moments
+        mom = self._mom_zip(obs_y, np.exp(log_offset), w_obs)
+        pi0 = float(np.clip(mom["pi"], 1e-4, 0.9999))
+        lam0 = float(np.clip(mom["lambda_per_km"], 1e-6, None))
+        x0 = np.array([np.log(pi0 / (1.0 - pi0)), np.log(lam0)])
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            ModelClass = (
-                ZeroInflatedGeneralizedPoisson if self.use_generalised
-                else ZeroInflatedPoisson
-            )
-            model = ModelClass(
-                endog=y,
-                exog=X_design,
-                exog_infl=pd.DataFrame({"const": np.ones(n)}),
-                offset=log_offset,
-                freq_weights=w_norm,
-            )
-            result = model.fit(
-                method="bfgs",
-                maxiter=200,
-                disp=False,
+            res = minimize(
+                neg_wll, x0=x0, method="L-BFGS-B",
+                options={"maxiter": 500, "ftol": 1e-9},
             )
 
-        # Extract parameters from fitted result
-        # Params layout: [inflate_const, count_const] for intercept-only
-        params = result.params
-        inflate_const = float(params.iloc[0]) if hasattr(params, "iloc") else float(params[0])
-        count_const = float(params.iloc[1]) if hasattr(params, "iloc") else float(params[1])
+        if not res.success and not np.isfinite(res.fun):
+            return mom
 
-        # pi = logistic(inflate_const), lambda_per_km = exp(count_const)
-        pi = float(1.0 / (1.0 + np.exp(-inflate_const)))
+        pi = float(1.0 / (1.0 + np.exp(-res.x[0])))
         pi = float(np.clip(pi, 1e-6, 1.0 - 1e-6))
-        # count_const is log(lambda * exposure_ref); exposure already in offset
-        # so lambda_per_km = exp(count_const) / reference_exposure = exp(count_const)
-        lambda_per_km = float(np.exp(np.clip(count_const, -10.0, 10.0)))
+        lambda_per_km = float(np.exp(np.clip(res.x[1], -15.0, 10.0)))
+        return {"lambda_per_km": lambda_per_km, "pi": pi}
 
+    def _statsmodels_zigp_weighted(
+        self,
+        obs_y: np.ndarray,
+        log_offset: np.ndarray,
+        w_obs: np.ndarray,
+    ) -> dict:
+        """
+        Fit ZIGP using statsmodels with a weighted-bootstrap subsample.
+
+        Draws a subsample of ~min(5000, n) observations proportional to w_obs,
+        which is unbiased and avoids the freq_weights bug in statsmodels ZI models.
+        """
+        import pandas as pd
+
+        n = len(obs_y)
+        w_norm = w_obs / (w_obs.sum() + 1e-12)
+        sample_size = min(5000, n)
+        rng = np.random.default_rng(self.random_state)
+        idx = rng.choice(n, size=sample_size, replace=True, p=w_norm)
+        y_s = obs_y[idx]
+        lo_s = log_offset[idx]
+        X_s = pd.DataFrame({"const": np.ones(sample_size)})
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model = ZeroInflatedGeneralizedPoisson(
+                endog=y_s, exog=X_s, exog_infl=X_s, offset=lo_s,
+            )
+            result = model.fit(method="bfgs", maxiter=300, disp=False)
+
+        inflate_const = float(result.params.iloc[0])
+        count_const = float(result.params.iloc[1])
+        pi = float(np.clip(1.0 / (1.0 + np.exp(-inflate_const)), 1e-6, 1.0 - 1e-6))
+        lambda_per_km = float(np.exp(np.clip(count_const, -15.0, 10.0)))
         return {"lambda_per_km": lambda_per_km, "pi": pi}
 
     def _mom_zip(
         self,
-        y: np.ndarray,
-        X_exposure: np.ndarray,
-        w_g: np.ndarray,
+        obs_y: np.ndarray,
+        obs_exp: np.ndarray,
+        w_obs: np.ndarray,
     ) -> dict:
         """
         Method-of-moments fallback for ZIP parameter estimation.
 
-        Closed-form: estimate lambda from nonzero mean, pi from zero fraction.
+        Uses weighted counts to estimate pi from zero fraction and lambda from
+        the nonzero mean rate per km.
         """
-        w_sum = float(w_g.sum()) + 1e-12
-        w_y = float((w_g * y).sum()) / w_sum
-        w_zero = float((w_g * (y == 0).astype(float)).sum()) / w_sum
+        w_sum = float(w_obs.sum()) + 1e-12
+        w_zero_frac = float((w_obs * (obs_y == 0).astype(float)).sum()) / w_sum
 
-        # pi estimate from zero fraction; clamp for numerical stability
-        pi_hat = float(np.clip(w_zero - np.exp(-max(w_y, 1e-8)), 0.0, 0.99))
+        # Estimated pi: zero_fraction - exp(-lambda*E[exposure]) ≈ zero_fraction
+        # Use simple fraction as starting point
+        pi_hat = float(np.clip(w_zero_frac * 0.8, 0.0, 0.99))
 
-        # Lambda estimate from mean count per km
-        safe_exposure = np.where(X_exposure > 0, X_exposure, 1.0)
-        rate_per_km = float((w_g * y / safe_exposure).sum() / w_sum)
-        lambda_per_km = max(rate_per_km, 1e-6)
+        safe_exp = np.where(obs_exp > 0, obs_exp, 1.0)
+        w_rate = float((w_obs * obs_y / safe_exp).sum()) / w_sum
+        lambda_per_km = max(w_rate, 1e-6)
 
         return {"lambda_per_km": lambda_per_km, "pi": pi_hat}
 
-    def _group_log_likelihood(
+    def _obs_log_likelihood(
         self,
-        X_counts: np.ndarray,
-        X_exposure: np.ndarray,
+        obs_y: np.ndarray,
+        obs_exp: np.ndarray,
         g: int,
     ) -> np.ndarray:
         """
-        Compute per-driver log-likelihood under group g's ZIP parameters.
+        Compute per-observation ZIP log-likelihood under group g.
 
         Parameters
         ----------
-        X_counts : (n_drivers, n_event_types)
-        X_exposure : (n_drivers,)
+        obs_y : (n_obs,) — event counts
+        obs_exp : (n_obs,) — exposure_km per observation
         g : group index
 
         Returns
         -------
-        np.ndarray, shape (n_drivers,)
-            Log-likelihood contribution for each driver under group g.
+        np.ndarray, shape (n_obs,)
         """
         params = self.zip_params_.get(g, {"lambda_per_km": 0.5, "pi": 0.3})
         pi = float(params.get("pi", 0.3))
         lam_per_km = float(params.get("lambda_per_km", 0.5))
 
-        # Aggregate counts and compute ZIP log-likelihood per driver
-        y = X_counts.sum(axis=1)  # (n_drivers,)
-        mu = lam_per_km * np.clip(X_exposure, 1e-6, None)  # expected count
+        mu = lam_per_km * np.clip(obs_exp, 1e-6, None)
         mu = np.clip(mu, 1e-12, None)
 
         log_pi = np.log(pi + 1e-300)
         log1mpi = np.log(1.0 - pi + 1e-300)
 
-        # ZIP log-likelihood:
-        # y=0: log(pi + (1-pi) * exp(-mu))
-        # y>0: log(1-pi) + y*log(mu) - mu - log_factorial(y)
         from scipy.special import gammaln
 
+        # ZIP log-likelihood:
+        # y=0: log(pi + (1-pi)*exp(-mu))  [can be either structural zero or Poisson zero]
+        # y>0: log(1-pi) + y*log(mu) - mu - log(y!)
         log_lik = np.where(
-            y == 0,
+            obs_y == 0,
             np.logaddexp(log_pi, log1mpi - mu),
-            log1mpi + y * np.log(mu) - mu - gammaln(y + 1.0),
+            log1mpi + obs_y * np.log(mu) - mu - gammaln(obs_y + 1.0),
         )
         return log_lik
 
+    # Alias for backward compatibility with _group_log_likelihood name in tests
+    def _group_log_likelihood(
+        self,
+        obs_y: np.ndarray,
+        obs_exp: np.ndarray,
+        g: int,
+    ) -> np.ndarray:
+        """Alias for _obs_log_likelihood (per-observation ZIP log-likelihood)."""
+        return self._obs_log_likelihood(obs_y, obs_exp, g)
+
     def _observed_log_likelihood(
         self,
-        X_counts: np.ndarray,
-        X_exposure: np.ndarray,
+        obs_y: np.ndarray,
+        obs_exp: np.ndarray,
+        obs_driver: np.ndarray,
+        n_drivers: int,
     ) -> float:
         """Compute observed-data log-likelihood (mixture marginal)."""
-        n_drivers = X_counts.shape[0]
+        # Per-driver log-likelihood: sum over observations
         log_resp = np.zeros((n_drivers, self.n_groups))
         for g in range(self.n_groups):
-            log_resp[:, g] = (
-                np.log(self.mixing_weights_[g] + 1e-300)
-                + self._group_log_likelihood(X_counts, X_exposure, g)
-            )
-        # log-sum-exp over groups
+            obs_ll = self._obs_log_likelihood(obs_y, obs_exp, g)
+            driver_ll = np.zeros(n_drivers)
+            np.add.at(driver_ll, obs_driver, obs_ll)
+            log_resp[:, g] = np.log(self.mixing_weights_[g] + 1e-300) + driver_ll
+
         ll = float(np.logaddexp.reduce(log_resp, axis=1).sum())
         return ll
 
     def _relabel_groups_by_rate(
         self,
-        X_counts: np.ndarray,
-        X_exposure: np.ndarray,
+        obs_y: np.ndarray,
+        obs_exp: np.ndarray,
+        obs_driver: np.ndarray,
+        n_drivers: int,
     ) -> None:
         """
         Relabel groups so group 0 has the lowest mean NME rate.
@@ -769,20 +851,15 @@ class ZIPNearMissModel:
         Modifies ``zip_params_``, ``mixing_weights_``, and ``group_posteriors_``
         in-place so the ordering is stable after fitting.
         """
-        # Mean NME rate per group: sum_i tau_{i,g} * total_count_i / sum_i tau_{i,g}
-        mean_rates = []
-        for g in range(self.n_groups):
-            w = self.group_posteriors_[:, g]
-            w_sum = float(w.sum()) + 1e-12
-            total_counts = X_counts.sum(axis=1)
-            safe_exp = np.where(X_exposure > 0, X_exposure, 1.0)
-            mean_rate = float((w * total_counts / safe_exp).sum() / w_sum)
-            mean_rates.append(mean_rate)
-
-        order = np.argsort(mean_rates)  # ascending rate order
+        # Use per-group lambda_per_km as the sorting key (simpler and more stable
+        # than computing weighted driver rates)
+        rates = [
+            self.zip_params_.get(g, {}).get("lambda_per_km", 0.0)
+            for g in range(self.n_groups)
+        ]
+        order = np.argsort(rates)  # ascending rate order
         self._group_order_ = order.tolist()
 
-        # Re-index params, weights, posteriors
         new_params = {new_g: self.zip_params_[int(old_g)] for new_g, old_g in enumerate(order)}
         new_weights = self.mixing_weights_[order]
         new_posteriors = self.group_posteriors_[:, order]
@@ -795,64 +872,51 @@ class ZIPNearMissModel:
     # Data helpers
     # ------------------------------------------------------------------
 
-    def _aggregate_driver_arrays(
+    def _build_obs_arrays(
         self,
         weekly_counts: pl.DataFrame,
-        driver_ids: list[str],
-        covariates: Optional[list[str]],
+        driver_idx_map: dict[str, int],
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
-        Aggregate weekly panel to driver-level arrays.
+        Flatten weekly panel to (driver, week, event_type) observation arrays.
 
         Returns
         -------
-        X_counts : (n_drivers, n_event_types) — total event counts per driver
-        X_exposure : (n_drivers,) — total exposure_km per driver
-        X_zero_frac : (n_drivers,) — fraction of (week, event_type) zeros per driver
+        obs_y : (n_obs,) — event counts
+        obs_exp : (n_obs,) — exposure_km for that observation
+        obs_driver : (n_obs,) — driver index (integer)
         """
-        n_drivers = len(driver_ids)
-        n_events = len(self.event_types)
+        # Use polars to efficiently build the flat observation arrays
+        # Each row in weekly_counts contains n_event_types observations
+        # We melt the event columns to get one row per (driver, week, event_type)
+        n_event_types = len(self.event_types)
 
-        # Build a lookup for driver index
-        driver_idx = {d: i for i, d in enumerate(driver_ids)}
+        # Build arrays from polars without melting (faster for large panels)
+        sorted_df = weekly_counts.sort(["driver_id", "week_id"])
+        n_rows = len(sorted_df)
 
-        X_counts = np.zeros((n_drivers, n_events), dtype=np.float64)
-        X_exposure = np.zeros(n_drivers, dtype=np.float64)
-        X_obs_count = np.zeros(n_drivers, dtype=np.float64)  # total (week, event) obs
-        X_zero_count = np.zeros(n_drivers, dtype=np.float64)  # total zeros
+        obs_y_list = []
+        obs_exp_list = []
+        obs_driver_list = []
 
-        # Vectorised aggregation using polars
-        agg_cols = [
-            pl.col(self.exposure_col).sum().alias("total_exposure"),
-            pl.len().alias("n_weeks"),
-        ]
-        for et in self.event_types:
-            agg_cols.append(pl.col(et).sum().alias(f"sum_{et}"))
-            agg_cols.append((pl.col(et) == 0).sum().alias(f"zeros_{et}"))
+        driver_col = sorted_df["driver_id"].to_list()
+        exp_col = sorted_df[self.exposure_col].to_numpy()
 
-        agg = (
-            weekly_counts
-            .group_by("driver_id")
-            .agg(agg_cols)
-            .sort("driver_id")
-        )
+        event_arrays = [sorted_df[et].to_numpy() for et in self.event_types]
 
-        for row in agg.iter_rows(named=True):
-            i = driver_idx.get(row["driver_id"])
-            if i is None:
-                continue
-            X_exposure[i] = float(row["total_exposure"])
-            n_weeks_i = int(row["n_weeks"])
-            for j, et in enumerate(self.event_types):
-                X_counts[i, j] = float(row[f"sum_{et}"])
-                X_zero_count[i] += float(row[f"zeros_{et}"])
-            X_obs_count[i] = float(n_weeks_i * n_events)
+        for j in range(n_event_types):
+            obs_y_list.append(event_arrays[j])
+            obs_exp_list.append(exp_col)
+            driver_indices = np.array(
+                [driver_idx_map.get(d, 0) for d in driver_col], dtype=np.int32
+            )
+            obs_driver_list.append(driver_indices)
 
-        # Zero fraction
-        safe_obs = np.where(X_obs_count > 0, X_obs_count, 1.0)
-        X_zero_frac = X_zero_count / safe_obs
+        obs_y = np.concatenate(obs_y_list).astype(np.float64)
+        obs_exp = np.concatenate(obs_exp_list).astype(np.float64)
+        obs_driver = np.concatenate(obs_driver_list).astype(np.int32)
 
-        return X_counts, X_exposure, X_zero_frac
+        return obs_y, obs_exp, obs_driver
 
     def _check_fitted(self) -> None:
         if not self.zip_params_:
