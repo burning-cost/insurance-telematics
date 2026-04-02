@@ -164,10 +164,19 @@ Takes raw trip sensor data (GPS, accelerometer). Feeds HMM-scored, credibility-w
 
 ## References
 
-- Jiang, Q. & Shi, Y. (2024). "Auto Insurance Pricing Using Telematics Data: Application of a Hidden Markov Model." *NAAJ* 28(4), pp.822–839.
-- Wüthrich, M.V. (2017). "Covariate Selection from Telematics Car Driving Data." *European Actuarial Journal* 7, pp.89–108.
-- Gao, G., Wang, H. & Wüthrich, M.V. (2021). "Boosting Poisson Regression Models with Telematics Car Driving Data." *Machine Learning* 111, pp.1787–1827.
-- Henckaerts, R. & Antonio, K. (2022). "The Added Value of Dynamically Updating Motor Insurance Prices with Telematics Data." *Insurance: Mathematics and Economics* 103, pp.79–95.
+**Hidden Markov Model foundations**
+
+- Baum, L.E. & Petrie, T. (1966). "Statistical Inference for Probabilistic Functions of Finite State Markov Chains." *The Annals of Mathematical Statistics*, 37(6), 1554–1563. [doi:10.1214/aoms/1177699147](https://doi.org/10.1214/aoms/1177699147) (Original HMM formulation.)
+- Baum, L.E., Petrie, T., Soules, G. & Weiss, N. (1970). "A Maximization Technique Occurring in the Statistical Analysis of Probabilistic Functions of Markov Chains." *The Annals of Mathematical Statistics*, 41(1), 164–171. [doi:10.1214/aoms/1177697196](https://doi.org/10.1214/aoms/1177697196) (Baum-Welch EM algorithm for HMM parameter estimation.)
+- Rabiner, L.R. (1989). "A Tutorial on Hidden Markov Models and Selected Applications in Speech Recognition." *Proceedings of the IEEE*, 77(2), 257–286. [doi:10.1109/5.18626](https://doi.org/10.1109/5.18626) (Definitive reference for the forward-backward algorithm and Viterbi decoding.)
+- Viterbi, A.J. (1967). "Error Bounds for Convolutional Codes and an Asymptotically Optimum Decoding Algorithm." *IEEE Transactions on Information Theory*, 13(2), 260–269. [doi:10.1109/TIT.1967.1054010](https://doi.org/10.1109/TIT.1967.1054010) (Viterbi algorithm for most-probable state sequence decoding.)
+
+**Telematics insurance literature**
+
+- Jiang, Q. & Shi, Y. (2024). "Auto Insurance Pricing Using Telematics Data: Application of a Hidden Markov Model." *North American Actuarial Journal*, 28(4), 822–839. [doi:10.1080/10920277.2023.2256657](https://doi.org/10.1080/10920277.2023.2256657)
+- Wüthrich, M.V. (2017). "Covariate Selection from Telematics Car Driving Data." *European Actuarial Journal*, 7, 89–108. [doi:10.1007/s13385-017-0149-z](https://doi.org/10.1007/s13385-017-0149-z)
+- Gao, G., Wang, H. & Wüthrich, M.V. (2021). "Boosting Poisson Regression Models with Telematics Car Driving Data." *Machine Learning*, 111, 1787–1827. [doi:10.1007/s10994-021-05957-0](https://doi.org/10.1007/s10994-021-05957-0)
+- Henckaerts, R. & Antonio, K. (2022). "The Added Value of Dynamically Updating Motor Insurance Prices with Telematics Data." *Insurance: Mathematics and Economics*, 103, 79–95. [doi:10.1016/j.insmatheco.2021.12.003](https://doi.org/10.1016/j.insmatheco.2021.12.003)
 
 ## Community
 
