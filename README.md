@@ -2,7 +2,7 @@
 
 Turn raw GPS and accelerometer trip data into GLM-ready driver risk features using Hidden Markov Models — auditable, credibility-weighted, and explainable to the FCA.
 
-[![PyPI](https://img.shields.io/pypi/v/insurance-telematics)](https://pypi.org/project/insurance-telematics/) [![Python](https://img.shields.io/pypi/pyversions/insurance-telematics)](https://pypi.org/project/insurance-telematics/) [![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/burning-cost/insurance-telematics/blob/main/LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/insurance-telematics)](https://pypi.org/project/insurance-telematics/) [![Downloads](https://img.shields.io/pypi/dm/insurance-telematics)](https://pypi.org/project/insurance-telematics/) [![Python](https://img.shields.io/pypi/pyversions/insurance-telematics)](https://pypi.org/project/insurance-telematics/) [![License](https://img.shields.io/pypi/l/insurance-telematics)](https://pypi.org/project/insurance-telematics/)
 
 ## Why this?
 
@@ -188,3 +188,11 @@ Takes raw trip sensor data (GPS, accelerometer). Feeds HMM-scored, credibility-w
 ## Licence
 
 MIT
+
+## Related Libraries
+
+| Library | Description |
+|---------|-------------|
+| [`insurance-credibility`](https://github.com/burning-cost/insurance-credibility) | Bühlmann-Straub credibility — blend HMM-derived telematics scores with portfolio experience |
+| [`insurance-fairness`](https://github.com/burning-cost/insurance-fairness) | FCA fairness auditing — telematics scores can correlate with protected characteristics; audit before deployment |
+| [`insurance-monitoring`](https://github.com/burning-cost/insurance-monitoring) | Post-deployment monitoring — track HMM state distribution drift as driving patterns change |
