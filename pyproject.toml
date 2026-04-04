@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "insurance-telematics"
-version = "0.2.0"
-description = "Telematics-based insurance pricing: HMM driving state classification and GLM-compatible risk scoring from raw trip data for usage-based insurance (UBI)"
+version = "0.2.1"
+description = "Telematics insurance pricing: HMM driving state classification and GLM risk scoring from raw trip data for usage-based insurance (UBI) and pay-how-you-drive (PHYD) products."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
@@ -13,14 +13,31 @@ authors = [{ name = "Burning Cost", email = "pricing.frontier@gmail.com" }]
 keywords = [
     "insurance",
     "telematics",
-    "HMM",
-    "actuarial",
-    "UBI",
-    "motor insurance",
-    "driving behaviour",
-    "pricing",
     "usage-based insurance",
+    "UBI",
+    "pay how you drive",
+    "PHYD",
+    "pay as you drive",
+    "PAYD",
+    "pay per mile",
+    "motor insurance",
+    "motor pricing",
+    "driving behaviour",
+    "driving score",
     "risk scoring",
+    "hidden markov model",
+    "HMM",
+    "GLM",
+    "actuarial",
+    "pricing",
+    "UK",
+    "personal lines",
+    "black box insurance",
+    "connected car",
+    "trip data",
+    "acceleration",
+    "harsh braking",
+    "speeding",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -59,11 +76,11 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://burning-cost.github.io/"
+Homepage = "https://burning-cost.github.io/libraries/insurance-telematics/"
+Documentation = "https://burning-cost.github.io/libraries/insurance-telematics/"
 Repository = "https://github.com/burning-cost/insurance-telematics"
-Changelog = "https://github.com/burning-cost/insurance-telematics/releases"
-Documentation = "https://burning-cost.github.io/insurance-telematics"
 "Bug Tracker" = "https://github.com/burning-cost/insurance-telematics/issues"
+Changelog = "https://github.com/burning-cost/insurance-telematics/releases"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/insurance_telematics"]
