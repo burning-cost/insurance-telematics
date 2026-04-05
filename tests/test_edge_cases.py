@@ -466,8 +466,8 @@ class TestTripSimulatorEdgeCases:
         trips_a, claims_a = sim_a.simulate(n_drivers=3, trips_per_driver=5)
         sim_b = TripSimulator(seed=42)
         trips_b, claims_b = sim_b.simulate(n_drivers=3, trips_per_driver=5)
-        assert trips_a.frame_equal(trips_b)
-        assert claims_a.frame_equal(claims_b)
+        assert trips_a.equals(trips_b)
+        assert claims_a.equals(claims_b)
 
     def test_simulator_different_seeds_differ(self):
         """Different seeds must produce different data."""
@@ -476,7 +476,7 @@ class TestTripSimulatorEdgeCases:
         sim_b = TripSimulator(seed=2)
         trips_b, _ = sim_b.simulate(n_drivers=3, trips_per_driver=5)
         # It is essentially impossible for all speed values to match by chance
-        assert not trips_a["speed_kmh"].series_equal(trips_b["speed_kmh"])
+        assert not trips_a["speed_kmh"].equals(trips_b["speed_kmh"])
 
     def test_full_pipeline_on_minimum_simulation(self):
         """The pipeline must not crash on the smallest possible simulation."""
